@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct FiltersView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @Binding var allowList: String
     @Binding var excludeList: String
     @Binding var maxFileSizeKB: Double
@@ -11,64 +13,57 @@ struct FiltersView: View {
     @State private var showFilterSheet = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Only include extensions")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        TextField("swift,js,ts,tsx,jsx,md,txt,py", text: $allowList)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit {
-                                applyDebounce?.cancel()
-                                onApply()
-                            }
-                            .onChange(of: allowList) { _ in scheduleApply() }
-                            .frame(minWidth: 280)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Exclude extensions")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        TextField("png,jpg,jpeg,gif,mp4,zip,bin,lock", text: $excludeList)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit {
-                                applyDebounce?.cancel()
-                                onApply()
-                            }
-                            .onChange(of: excludeList) { _ in scheduleApply() }
-                            .frame(minWidth: 260)
-                    }
-
-                    sizeCard
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Toggle("Skip hidden", isOn: $skipHidden)
-                            .toggleStyle(.switch)
-                        Button(action: onApply) {
-                            Label("Apply", systemImage: "line.3.horizontal.decrease.circle")
-                                .padding(.horizontal, 6)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.return, modifiers: [.command])
-
-                        Button("Pop out editor…") {
-                            showFilterSheet = true
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showFilterSheet = true
+                } label: {
+                    Label("Editor", systemImage: "square.and.pencil")
                 }
-                Text("Press Apply to refresh. Filters also auto-apply after a short pause when extensions, size, or hidden change.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .help("Open filter editor")
             }
+
+            HStack(alignment: .top, spacing: 14) {
+                filterField(
+                    title: "Include",
+                    placeholder: "swift,js,ts,tsx,jsx,md,txt,py",
+                    text: $allowList
+                )
+                .frame(minWidth: 220)
+
+                filterField(
+                    title: "Exclude",
+                    placeholder: "png,jpg,jpeg,gif,mp4,zip,bin,lock",
+                    text: $excludeList
+                )
+                .frame(minWidth: 220)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Skip hidden files", isOn: $skipHidden)
+                        .toggleStyle(.switch)
+                    Button(action: onApply) {
+                        Label("Apply", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: [.command])
+                }
+                .frame(minWidth: 150, alignment: .leading)
+            }
+
+            sizeCard
+
+            Text("Filters auto-apply after a short pause. Use Apply for an immediate refresh.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(12)
-        .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .appSurface(cornerRadius: 12)
+        .hoverLift()
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: skipHidden)
         .sheet(isPresented: $showFilterSheet) {
             FilterEditorSheet(
                 allowList: $allowList,
@@ -82,6 +77,21 @@ struct FiltersView: View {
     }
 
     // MARK: - Subviews
+
+    private func filterField(title: String, placeholder: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    applyDebounce?.cancel()
+                    onApply()
+                }
+                .onChange(of: text.wrappedValue) { _ in scheduleApply() }
+        }
+    }
 
     private var sizeCard: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -105,6 +115,7 @@ struct FiltersView: View {
                     .textFieldStyle(.roundedBorder)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Helpers
@@ -127,7 +138,7 @@ private struct FilterEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Edit filters")
+            Label("Edit Filters", systemImage: "line.3.horizontal.decrease.circle")
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {

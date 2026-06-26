@@ -3,134 +3,188 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
     @State private var sidebarWidth: CGFloat = 320
+    @State private var sidebarDragStartWidth: CGFloat = 320
     @State private var isResizingSidebar = false
     @State private var rootURL: URL?
     @State private var rootNode: FileNode?
+    @State private var allFileNodes: [FileNode] = []
+    @State private var selectedFileNodes: [FileNode] = []
+    @State private var selectedBytes = 0
+    @State private var selectedTokenCount = 0
     @State private var selectedIDs: Set<UUID> = []
     @State private var promptPrefix: String = ""
     @AppStorage("cc_allowListString") private var allowListString: String = "swift,js,ts,tsx,jsx,md,txt,py"
     @AppStorage("cc_excludeListString") private var excludeListString: String = "png,jpg,jpeg,gif,mp4,zip,bin,lock"
-    @State private var maxFileSizeKB: Double = 512
-    @State private var skipHidden = true
-    @State private var outputMarkdown = true
+    @AppStorage("cc_maxFileSizeKB") private var maxFileSizeKB: Double = 512
+    @AppStorage("cc_skipHidden") private var skipHidden = true
+    @AppStorage("cc_outputMarkdown") private var outputMarkdown = true
     @State private var isLoading = false
     @State private var status: String = "Pick a folder to start."
-    @State private var showFilters = true
+    @AppStorage("cc_showFilters") private var showFilters = true
     @State private var showToast = false
     @State private var reloadDebounce: DispatchWorkItem?
+    @State private var toastDismissWorkItem: DispatchWorkItem?
+    @State private var activeReloadID: UUID?
 
     private let loader = TreeLoader()
     private let estimator = TokenEstimator()
 
     var body: some View {
-        ZStack {
-            LinearGradient(colors: [.indigo.opacity(0.12), .teal.opacity(0.12), .pink.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: sidebarWidth)
+                .background(.bar)
 
-            HStack(spacing: 0) {
-                sidebar
-                    .frame(width: sidebarWidth)
-                    .background(.ultraThickMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            sidebarGrabber
 
-                sidebarGrabber
-
-                VStack(spacing: 12) {
-                    header
-                    controlBar
-                    promptEditor
-                    if showFilters { filters }
-                    selectedPreview
-                    statsBar
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(.thinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            }
-            .padding(18)
+            mainContent
         }
         .frame(minWidth: 1100, minHeight: 760)
+        .overlay(alignment: .topTrailing) {
+            if showToast {
+                copyToast
+                    .padding(.top, 18)
+                    .padding(.trailing, 22)
+                    .transition(.opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+            }
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: showToast)
         .onChange(of: maxFileSizeKB) { _ in scheduleReload() }
         .onChange(of: skipHidden) { _ in scheduleReload() }
+        .onChange(of: allowListString) { _ in scheduleReload() }
+        .onChange(of: excludeListString) { _ in scheduleReload() }
     }
 
     // MARK: - Subviews
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Codebase Explorer & Combiner")
-                    .font(.largeTitle.weight(.semibold))
-                Text("Curate files, count tokens, and ship a ready-to-paste prompt.")
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Codebase Combiner")
+                    .font(.title2.weight(.semibold))
+                Text(rootURL?.path ?? "Choose a workspace to begin.")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+
             Spacer()
-            Text(status)
+
+            Label(status, systemImage: isLoading ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+                .labelStyle(.titleAndIcon)
                 .foregroundStyle(.secondary)
                 .font(.callout)
+                .lineLimit(1)
+                .frame(maxWidth: 280, alignment: .trailing)
+                .contentTransition(.opacity)
         }
+        .padding(.bottom, 2)
     }
 
     private var sidebar: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Label("Workspace", systemImage: "folder")
-                    .font(.headline)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Label("Workspace", systemImage: "sidebar.left")
+                    .font(.headline.weight(.semibold))
                 Spacer()
                 Button(action: pickFolder) {
-                    Image(systemName: "plus.circle")
+                    Image(systemName: "folder.badge.plus")
                 }
+                .buttonStyle(.borderless)
                 .help("Choose folder")
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+
             explorer
-            Spacer(minLength: 0)
+
+            sidebarFooter
+        }
+    }
+
+    private var sidebarFooter: some View {
+        VStack(spacing: 10) {
+            Divider()
+
+            HStack(spacing: 8) {
+                Button {
+                    openWindow(id: "settings")
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    AppLinks.openSupportPage()
+                } label: {
+                    Label("Support", systemImage: "heart.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.pink)
+            }
+            .controlSize(.small)
         }
         .padding(12)
     }
 
     private var controlBar: some View {
-        HStack(spacing: 10) {
-            Label(rootURL?.lastPathComponent ?? "No folder", systemImage: "externaldrive")
-                .foregroundStyle(rootURL == nil ? .secondary : .primary)
-                .lineLimit(1)
-            Button(action: reloadTree) {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-            .disabled(rootURL == nil || isLoading)
+        HStack(spacing: 8) {
+            actionButton("Choose", systemImage: "folder", action: pickFolder)
+                .keyboardShortcut("o", modifiers: [.command])
 
-            Divider().frame(height: 18)
+            actionButton("Refresh", systemImage: "arrow.clockwise", action: reloadTree)
+                .disabled(rootURL == nil || isLoading)
+                .keyboardShortcut("r", modifiers: [.command])
 
-            Button(action: selectAll) {
-                Label("Select all", systemImage: "checkmark.circle")
-            }
-            .disabled(rootNode == nil)
-            Button(action: clearSelection) {
-                Label("Clear", systemImage: "xmark.circle")
-            }
-            .disabled(selectedIDs.isEmpty)
+            Divider()
+                .frame(height: 20)
 
-            Divider().frame(height: 18)
+            actionButton("All", systemImage: "checkmark.circle", action: selectAll)
+                .disabled(rootNode == nil)
+            actionButton("Clear", systemImage: "xmark.circle", action: clearSelection)
+                .disabled(selectedIDs.isEmpty)
+
+            Divider()
+                .frame(height: 20)
 
             Button(action: copyCombined) {
-                Label("Copy combined", systemImage: "doc.on.doc")
+                Label("Copy", systemImage: "doc.on.doc")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(selectedFiles.isEmpty)
+            .controlSize(.regular)
+            .disabled(selectedFileNodes.isEmpty)
+            .keyboardShortcut("c", modifiers: [.command, .shift])
 
-            Button(action: saveCombined) {
-                Label("Save…", systemImage: "square.and.arrow.down")
-            }
-            .disabled(selectedFiles.isEmpty)
+            actionButton("Save", systemImage: "square.and.arrow.down", action: saveCombined)
+                .disabled(selectedFileNodes.isEmpty)
+                .keyboardShortcut("s", modifiers: [.command])
 
             Spacer()
 
-            Toggle("Markdown", isOn: $outputMarkdown)
-                .toggleStyle(.switch)
-            Toggle("Filters", isOn: $showFilters)
-                .toggleStyle(.switch)
+            Picker("Output", selection: $outputMarkdown) {
+                Text("Markdown").tag(true)
+                Text("Plain Text").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 170)
+            .labelsHidden()
+
+            Toggle(isOn: $showFilters) {
+                Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .toggleStyle(.button)
+            .help("Show filters")
         }
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .hoverLift()
     }
 
     private var promptEditor: some View {
@@ -150,8 +204,12 @@ struct ContentView: View {
     private var explorer: some View {
         Group {
             if isLoading {
-                ProgressView("Scanning files…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 12) {
+                    ScanningIndicator()
+                    Text("Scanning files...")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let root = rootNode {
                 List {
                     OutlineGroup([root], children: \.childrenOrNil) { node in
@@ -163,26 +221,35 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                .animation(.spring(response: 0.25), value: selectedIDs)
+                .animation(reduceMotion ? nil : .spring(response: 0.25), value: selectedIDs)
+                .transition(.opacity.combined(with: .move(edge: .leading)))
             } else {
                 VStack(spacing: 10) {
-                    Image(systemName: "folder.badge.questionmark")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.secondary)
+                    EmptyStateSymbol(systemImage: "folder.badge.questionmark")
                     Text("No folder selected")
                         .font(.title3.weight(.semibold))
                     Text("Pick a folder to view files and token counts.")
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button(action: pickFolder) {
+                        Label("Choose Folder", systemImage: "folder")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 6)
                 }
+                .padding(22)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.86), value: isLoading)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.86), value: rootNode?.id)
     }
 
     private var statsBar: some View {
         StatsBar(
-            totalFiles: fileNodes.count,
-            selectedFiles: selectedFiles.count,
+            totalFiles: allFileNodes.count,
+            selectedFiles: selectedFileNodes.count,
             tokenCount: selectedTokenCount + estimator.estimateTokens(in: promptPrefix),
             bytes: selectedBytes
         )
@@ -191,43 +258,115 @@ struct ContentView: View {
     private var selectedPreview: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Selected files", systemImage: "checkmark.circle")
+                Label("Selected Files", systemImage: "checkmark.circle")
                     .font(.headline)
                 Spacer()
-                Button("Copy") { copyCombined() }
+                Text("\(selectedFileNodes.count) items")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                if !selectedFileNodes.isEmpty {
+                    Button {
+                        copyCombined()
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
                     .buttonStyle(.borderedProminent)
-                    .disabled(selectedFiles.isEmpty)
-                Button("Save…") { saveCombined() }
-                    .disabled(selectedFiles.isEmpty)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+
+                    Button {
+                        saveCombined()
+                    } label: {
+                        Label("Save", systemImage: "square.and.arrow.down")
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
 
-            if selectedFiles.isEmpty {
-                Text("Choose files from the left to preview your payload.")
-                    .foregroundStyle(.secondary)
+            if selectedFileNodes.isEmpty {
+                VStack(spacing: 8) {
+                    EmptyStateSymbol(systemImage: "doc.text.magnifyingglass")
+                    Text("No Files Selected")
+                        .font(.headline)
+                    Text("Choose files from the sidebar to preview the combined payload.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 128)
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(selectedFiles.sorted { $0.relativePath < $1.relativePath }, id: \.id) { file in
-                            HStack {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(selectedFileNodes, id: \.id) { file in
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text")
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 18)
                                 Text(file.relativePath)
                                     .lineLimit(1)
+                                    .truncationMode(.middle)
                                 Spacer()
                                 Text("\(file.tokenCount) tkn")
                                     .monospacedDigit()
                                     .foregroundStyle(.secondary)
+                                Text(file.displaySize)
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
                             }
-                            .padding(8)
-                            .background(.quaternary.opacity(0.25))
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                         }
                     }
+                    .padding(2)
                 }
                 .frame(maxHeight: 180)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(12)
-        .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .appSurface(cornerRadius: 12, emphasized: !selectedFileNodes.isEmpty)
+        .hoverLift()
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.84), value: selectedIDs)
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.84), value: selectedFileNodes.isEmpty)
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 12) {
+            header
+            controlBar
+            promptEditor
+            if showFilters {
+                filters
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.98, anchor: .top)),
+                        removal: .opacity.combined(with: .move(edge: .top))
+                    ))
+            }
+            selectedPreview
+            statsBar
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.86), value: showFilters)
+    }
+
+    private func actionButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+    }
+
+    private var copyToast: some View {
+        Label("Copied", systemImage: "checkmark.circle.fill")
+            .font(.callout.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .foregroundStyle(.primary)
+            .appSurface(cornerRadius: 20, emphasized: true)
     }
 
     // MARK: - Live reload helpers
@@ -259,6 +398,7 @@ struct ContentView: View {
         } else {
             selectedIDs.subtract(ids)
         }
+        refreshSelectionSnapshot()
     }
 
     private func gatherFileIDs(_ node: FileNode) -> [UUID] {
@@ -269,34 +409,32 @@ struct ContentView: View {
     }
 
     private func selectAll() {
-        selectedIDs = Set(fileNodes.map(\.id))
+        selectedIDs = Set(allFileNodes.map(\.id))
+        refreshSelectionSnapshot()
     }
 
     private func clearSelection() {
         selectedIDs.removeAll()
+        refreshSelectionSnapshot()
     }
 
     // MARK: - Data helpers
 
-    private var fileNodes: [FileNode] {
-        guard let root = rootNode else { return [] }
-        return flatten(root).filter { !$0.isDirectory }
-    }
-
-    private var selectedFiles: [FileNode] {
-        fileNodes.filter { selectedIDs.contains($0.id) }
-    }
-
-    private var selectedBytes: Int {
-        selectedFiles.reduce(0) { $0 + $1.sizeBytes }
-    }
-
-    private var selectedTokenCount: Int {
-        selectedFiles.reduce(0) { $0 + $1.tokenCount }
-    }
-
-    private func flatten(_ node: FileNode) -> [FileNode] {
+    private nonisolated static func flatten(_ node: FileNode) -> [FileNode] {
         [node] + node.children.flatMap { flatten($0) }
+    }
+
+    private nonisolated static func flattenFiles(_ node: FileNode) -> [FileNode] {
+        flatten(node)
+            .filter { !$0.isDirectory }
+            .sorted { $0.relativePath.localizedCaseInsensitiveCompare($1.relativePath) == .orderedAscending }
+    }
+
+    private func refreshSelectionSnapshot() {
+        let files = allFileNodes.filter { selectedIDs.contains($0.id) }
+        selectedFileNodes = files
+        selectedBytes = files.reduce(0) { $0 + $1.sizeBytes }
+        selectedTokenCount = files.reduce(0) { $0 + $1.tokenCount }
     }
 
     private func parseExtensions(_ text: String) -> Set<String> {
@@ -325,6 +463,8 @@ struct ContentView: View {
 
     private func reloadTree() {
         guard let url = rootURL else { return }
+        let reloadID = UUID()
+        activeReloadID = reloadID
         isLoading = true
         status = "Scanning…"
 
@@ -342,23 +482,26 @@ struct ContentView: View {
                     maxFileSizeKB: maxSize,
                     skipHidden: skipHiddenFiles
                 )
+                let files = Self.flattenFiles(tree)
                 DispatchQueue.main.async {
+                    guard activeReloadID == reloadID else { return }
                     rootNode = tree
-                    selectedIDs = Set(fileNodesIDs(from: tree))
+                    allFileNodes = files
+                    selectedIDs = Set(files.map(\.id))
+                    selectedFileNodes = files
+                    selectedBytes = files.reduce(0) { $0 + $1.sizeBytes }
+                    selectedTokenCount = files.reduce(0) { $0 + $1.tokenCount }
                     isLoading = false
-                    status = "Loaded \(tree.flattened.count(where: { !$0.isDirectory })) files"
+                    status = "Loaded \(files.count) files"
                 }
             } catch {
                 DispatchQueue.main.async {
+                    guard activeReloadID == reloadID else { return }
                     isLoading = false
                     status = error.localizedDescription
                 }
             }
         }
-    }
-
-    private func fileNodesIDs(from root: FileNode) -> [UUID] {
-        flatten(root).filter { !$0.isDirectory }.map(\.id)
     }
 
     private func copyCombined() {
@@ -367,6 +510,12 @@ struct ContentView: View {
         NSPasteboard.general.setString(text, forType: .string)
         status = "Copied to clipboard"
         showToast = true
+        toastDismissWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            showToast = false
+        }
+        toastDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8, execute: work)
     }
 
     private func saveCombined() {
@@ -394,9 +543,7 @@ struct ContentView: View {
             blocks.append(prefix)
         }
 
-        let sortedFiles = selectedFiles.sorted { $0.relativePath.lowercased() < $1.relativePath.lowercased() }
-
-        for file in sortedFiles {
+        for file in selectedFileNodes {
             guard let content = file.content else { continue }
             if outputMarkdown {
                 blocks.append("## \(file.relativePath)\n\n```\(languageHint(for: file))\n\(content)\n```\n")
@@ -433,13 +580,17 @@ struct ContentView: View {
     private var sidebarGrabber: some View {
         Rectangle()
             .fill(isResizingSidebar ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.25))
-            .frame(width: 6)
-            .padding(.vertical, 10)
+            .frame(width: 1)
+            .frame(width: 10)
+            .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        if !isResizingSidebar {
+                            sidebarDragStartWidth = sidebarWidth
+                        }
                         isResizingSidebar = true
-                        let newWidth = sidebarWidth + value.translation.width
+                        let newWidth = sidebarDragStartWidth + value.translation.width
                         sidebarWidth = min(max(220, newWidth), 600)
                     }
                     .onEnded { _ in
@@ -452,7 +603,6 @@ struct ContentView: View {
                     .frame(width: 1),
                 alignment: .trailing
             )
-            .padding(.horizontal, 6)
     }
 }
 
@@ -465,7 +615,22 @@ struct CodebaseExplorerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .preferredColorScheme(.light)
+        }
+        .windowResizability(.contentSize)
+        .commands {
+            CommandMenu("Support") {
+                Button("Buy Me a Coffee") {
+                    AppLinks.openSupportPage()
+                }
+            }
+        }
+
+        Settings {
+            SettingsView()
+        }
+
+        Window("Settings", id: "settings") {
+            SettingsView()
         }
         .windowResizability(.contentSize)
     }

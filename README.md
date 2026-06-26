@@ -8,18 +8,21 @@ Codebase Combiner helps you curate files, count tokens, and generate a ready-to-
 This repo ships two deliverables:
 
 - VS Code extension (Node/JavaScript)
-- macOS SwiftUI app (SwiftPM)
+- Native macOS SwiftUI app (SwiftPM)
 
 ## Features
 
 - Combine a workspace or folder into a single Markdown or text file.
 - Flexible include/exclude filters by glob and extension.
 - Token estimation for prompt sizing.
-- SwiftUI desktop app for visual selection and preview.
+- Native macOS sidebar/detail app for visual file selection, prompt preview, and copy/save workflows.
+- Animated loading, empty, selection, hover, and copy-feedback states with Reduce Motion support.
+- macOS Settings for default output format, filters, hidden-file handling, and max file size.
+- Support links in the app menu, Settings, and sidebar for [Buy Me a Coffee](https://buymeacoffee.com/s1korrrr).
 
 ## Preview
 
-![Codebase Combiner app preview](image.png)
+![Codebase Combiner macOS app preview](docs/screenshots/macos-app.png)
 
 ## Getting started
 
@@ -37,7 +40,7 @@ Quick start (Swift app):
 
 ```sh
 cd SwiftExplorerApp
-swift run
+swift run CodebaseExplorerApp
 ```
 
 ## Usage
@@ -53,8 +56,10 @@ Output options are configurable in VS Code settings under â€œCodebase Combinerâ€
 
 ### macOS SwiftUI app
 
-- Launch with `swift run` (or run the built binary).
-- Choose a folder, adjust filters, select files, and copy/save the combined prompt.
+- Launch with `swift run CodebaseExplorerApp` from `SwiftExplorerApp/`.
+- Choose a folder, adjust filters, select files, then copy or save the combined prompt.
+- Use the sidebar footer or macOS app menu for Settings and support actions.
+- Settings persist scan/output defaults through `@AppStorage`.
 
 ## Development
 
@@ -66,8 +71,11 @@ Output options are configurable in VS Code settings under â€œCodebase Combinerâ€
 
 ### Swift
 
+- Build: `cd SwiftExplorerApp && swift build`
 - Tests: `cd SwiftExplorerApp && swift test`
-- Format (SwiftFormat): `swiftformat .`
+- Run: `cd SwiftExplorerApp && swift run CodebaseExplorerApp`
+- Format (SwiftFormat): `cd SwiftExplorerApp && swiftformat .`
+- Format check: `cd SwiftExplorerApp && swiftformat --lint .`
 
 ## Quality gates
 
