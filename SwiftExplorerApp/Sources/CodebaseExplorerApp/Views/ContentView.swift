@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var selectedFileNodes: [FileNode] = []
     @State private var selectedBytes = 0
     @State private var selectedTokenCount = 0
-    @State private var selectedIDs: Set<UUID> = []
+    @State private var selectedIDs: Set<String> = []
     @State private var promptPrefix: String = ""
     @AppStorage("cc_allowListString") private var allowListString: String = "swift,js,ts,tsx,jsx,md,txt,py"
     @AppStorage("cc_excludeListString") private var excludeListString: String = "png,jpg,jpeg,gif,mp4,zip,bin,lock"
@@ -27,10 +27,14 @@ struct ContentView: View {
     @State private var showToast = false
     @State private var reloadDebounce: DispatchWorkItem?
     @State private var toastDismissWorkItem: DispatchWorkItem?
+    @State private var draftSaveWorkItem: DispatchWorkItem?
     @State private var activeReloadID: UUID?
+    @State private var restoredDraft: ClipboardDraft?
 
     private let loader = TreeLoader()
     private let estimator = TokenEstimator()
+    private let outputBuilder = CombinedOutputBuilder()
+    private let draftStore = ClipboardDraftStore()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -56,6 +60,9 @@ struct ContentView: View {
         .onChange(of: skipHidden) { _ in scheduleReload() }
         .onChange(of: allowListString) { _ in scheduleReload() }
         .onChange(of: excludeListString) { _ in scheduleReload() }
+        .onChange(of: promptPrefix) { _ in scheduleDraftSave() }
+        .onChange(of: outputMarkdown) { _ in scheduleDraftSave() }
+        .onAppear(perform: loadRestoredDraft)
     }
 
     // MARK: - Subviews
@@ -346,6 +353,47 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.84), value: selectedFileNodes.isEmpty)
     }
 
+    @ViewBuilder
+    private var restoredDraftBanner: some View {
+        if let draft = restoredDraft {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Last ready copy is saved")
+                        .font(.headline)
+                    Text("\(draft.fileCount) files • \(draft.formatLabel) • \(draft.tokenCount) tokens • \(formattedDraftDate(draft.generatedAt))")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Button {
+                    copyRestoredDraft()
+                } label: {
+                    Label("Copy Last", systemImage: "doc.on.clipboard")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    clearRestoredDraft()
+                } label: {
+                    Label("Clear", systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .appSurface(cornerRadius: 12, emphasized: selectedFileNodes.isEmpty)
+            .hoverLift()
+            .transition(.opacity.combined(with: .move(edge: .top)).combined(with: .scale(scale: 0.98)))
+        }
+    }
+
     private var mainContent: some View {
         VStack(spacing: 12) {
             header
@@ -359,6 +407,7 @@ struct ContentView: View {
                     ))
             }
             selectedPreview
+            restoredDraftBanner
             statsBar
         }
         .padding(16)
@@ -393,6 +442,92 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
     }
 
+    private func scheduleDraftSave() {
+        guard !selectedFileNodes.isEmpty else { return }
+        draftSaveWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            persistCurrentDraft(updateStatus: false)
+        }
+        draftSaveWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
+    }
+
+    private func loadRestoredDraft() {
+        do {
+            restoredDraft = try draftStore.load()
+            if restoredDraft != nil, selectedFileNodes.isEmpty {
+                status = "Last ready copy restored"
+                AppLog.persistence.info("Restored last ready payload")
+            }
+        } catch {
+            status = "Could not restore last copy: \(error.localizedDescription)"
+            AppLog.persistence.error("Failed to restore last ready payload: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func persistCurrentDraft(updateStatus: Bool) {
+        guard !selectedFileNodes.isEmpty else { return }
+        let text = combinedText()
+        persistDraft(text: text, updateStatus: updateStatus)
+    }
+
+    private func persistDraft(text: String, updateStatus: Bool) {
+        let draft = ClipboardDraft(
+            text: text,
+            format: outputMarkdown ? .markdown : .plainText,
+            fileCount: selectedFileNodes.count,
+            tokenCount: selectedTokenCount + estimator.estimateTokens(in: promptPrefix),
+            byteCount: selectedBytes,
+            rootPath: rootURL?.path,
+            generatedAt: Date()
+        )
+
+        let store = draftStore
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                try store.save(draft)
+                DispatchQueue.main.async {
+                    restoredDraft = draft
+                    AppLog.persistence.info("Saved last ready payload with \(draft.fileCount, privacy: .public) files")
+                    if updateStatus {
+                        status = "Saved last ready copy"
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    status = "Could not save last copy: \(error.localizedDescription)"
+                    AppLog.persistence.error("Failed to save last ready payload: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    private func copyRestoredDraft() {
+        guard let draft = restoredDraft else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(draft.text, forType: .string)
+        status = "Copied last ready payload"
+        showCopiedToast()
+    }
+
+    private func clearRestoredDraft() {
+        do {
+            try draftStore.clear()
+            restoredDraft = nil
+            status = "Cleared saved payload"
+            AppLog.persistence.info("Cleared saved payload")
+        } catch {
+            status = "Could not clear saved payload: \(error.localizedDescription)"
+            AppLog.persistence.error("Failed to clear saved payload: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func formattedDraftDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
     // MARK: - Selection helpers
 
     private func isSelected(_ node: FileNode) -> Bool {
@@ -415,7 +550,7 @@ struct ContentView: View {
         refreshSelectionSnapshot()
     }
 
-    private func gatherFileIDs(_ node: FileNode) -> [UUID] {
+    private func gatherFileIDs(_ node: FileNode) -> [String] {
         if node.isDirectory {
             return node.children.flatMap { gatherFileIDs($0) }
         }
@@ -429,7 +564,7 @@ struct ContentView: View {
 
     private func clearSelection() {
         selectedIDs.removeAll()
-        refreshSelectionSnapshot()
+        refreshSelectionSnapshot(autosave: false)
     }
 
     // MARK: - Data helpers
@@ -444,11 +579,14 @@ struct ContentView: View {
             .sorted { $0.relativePath.localizedCaseInsensitiveCompare($1.relativePath) == .orderedAscending }
     }
 
-    private func refreshSelectionSnapshot() {
+    private func refreshSelectionSnapshot(autosave: Bool = true) {
         let files = allFileNodes.filter { selectedIDs.contains($0.id) }
         selectedFileNodes = files
         selectedBytes = files.reduce(0) { $0 + $1.sizeBytes }
         selectedTokenCount = files.reduce(0) { $0 + $1.tokenCount }
+        if autosave {
+            scheduleDraftSave()
+        }
     }
 
     private func parseExtensions(_ text: String) -> Set<String> {
@@ -478,9 +616,12 @@ struct ContentView: View {
     private func reloadTree() {
         guard let url = rootURL else { return }
         let reloadID = UUID()
+        let previousSelectedIDs = selectedIDs
+        let shouldPreserveSelection = rootNode != nil
         activeReloadID = reloadID
         isLoading = true
         status = "Scanning…"
+        AppLog.scan.info("Started workspace scan")
 
         let allow = parseExtensions(allowListString)
         let exclude = parseExtensions(excludeListString)
@@ -499,20 +640,24 @@ struct ContentView: View {
                 let files = Self.flattenFiles(tree)
                 DispatchQueue.main.async {
                     guard activeReloadID == reloadID else { return }
+                    let availableIDs = Set(files.map(\.id))
+                    let nextSelectedIDs = shouldPreserveSelection
+                        ? previousSelectedIDs.intersection(availableIDs)
+                        : availableIDs
                     rootNode = tree
                     allFileNodes = files
-                    selectedIDs = Set(files.map(\.id))
-                    selectedFileNodes = files
-                    selectedBytes = files.reduce(0) { $0 + $1.sizeBytes }
-                    selectedTokenCount = files.reduce(0) { $0 + $1.tokenCount }
+                    selectedIDs = nextSelectedIDs
+                    refreshSelectionSnapshot()
                     isLoading = false
-                    status = "Loaded \(files.count) files"
+                    status = nextSelectedIDs.isEmpty ? "Loaded \(files.count) files" : "Loaded \(files.count) files, \(nextSelectedIDs.count) selected"
+                    AppLog.scan.info("Completed workspace scan with \(files.count, privacy: .public) files")
                 }
             } catch {
                 DispatchQueue.main.async {
                     guard activeReloadID == reloadID else { return }
                     isLoading = false
                     status = error.localizedDescription
+                    AppLog.scan.error("Workspace scan failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -523,13 +668,9 @@ struct ContentView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         status = "Copied to clipboard"
-        showToast = true
-        toastDismissWorkItem?.cancel()
-        let work = DispatchWorkItem {
-            showToast = false
-        }
-        toastDismissWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8, execute: work)
+        AppLog.export.info("Copied combined payload with \(selectedFileNodes.count, privacy: .public) files")
+        persistDraft(text: text, updateStatus: false)
+        showCopiedToast()
     }
 
     private func saveCombined() {
@@ -543,52 +684,32 @@ struct ContentView: View {
             do {
                 let text = combinedText()
                 try text.write(to: url, atomically: true, encoding: .utf8)
+                persistDraft(text: text, updateStatus: false)
                 status = "Saved to \(url.lastPathComponent)"
+                AppLog.export.info("Saved combined payload with \(selectedFileNodes.count, privacy: .public) files")
             } catch {
                 status = "Failed to save: \(error.localizedDescription)"
+                AppLog.export.error("Failed to save combined payload: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
 
     private func combinedText() -> String {
-        var blocks: [String] = []
-        let prefix = promptPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !prefix.isEmpty {
-            blocks.append(prefix)
-        }
-
-        for file in selectedFileNodes {
-            guard let content = file.content else { continue }
-            if outputMarkdown {
-                blocks.append("## \(file.relativePath)\n\n```\(languageHint(for: file))\n\(content)\n```\n")
-            } else {
-                blocks.append("// File: \(file.relativePath)\n\(content)\n")
-            }
-        }
-
-        return blocks.joined(separator: "\n")
+        outputBuilder.build(
+            promptPrefix: promptPrefix,
+            files: selectedFileNodes,
+            format: outputMarkdown ? .markdown : .plainText
+        )
     }
 
-    private func languageHint(for file: FileNode) -> String {
-        switch file.fileExtension {
-        case "swift": "swift"
-        case "js": "javascript"
-        case "ts": "typescript"
-        case "tsx": "typescriptreact"
-        case "jsx": "javascriptreact"
-        case "json": "json"
-        case "py": "python"
-        case "rb": "ruby"
-        case "rs": "rust"
-        case "go": "go"
-        case "kt": "kotlin"
-        case "java": "java"
-        case "php": "php"
-        case "sh", "zsh", "bash": "bash"
-        case "yml", "yaml": "yaml"
-        case "md": "markdown"
-        default: ""
+    private func showCopiedToast() {
+        showToast = true
+        toastDismissWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            showToast = false
         }
+        toastDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8, execute: work)
     }
 
     private var sidebarGrabber: some View {
@@ -656,6 +777,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ensure the app accepts keyboard input even when launched as a plain executable.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        AppLog.lifecycle.info("Application finished launching")
         DispatchQueue.main.async { self.recenterOffscreenWindowsIfNeeded() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.recenterOffscreenWindowsIfNeeded() }
     }

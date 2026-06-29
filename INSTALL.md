@@ -49,6 +49,14 @@ npm run package
 
 ## Build and Run (recommended)
 
+From the repository root, build the local app bundle and verify launch:
+
+```sh
+./script/build_and_run.sh --verify
+```
+
+For direct SwiftPM development:
+
 1. Open Terminal and `cd` to the app directory:
    ```sh
    cd SwiftExplorerApp

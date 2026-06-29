@@ -16,7 +16,9 @@ This repo ships two deliverables:
 - Flexible include/exclude filters by glob and extension.
 - Token estimation for prompt sizing.
 - Native macOS sidebar/detail app for visual file selection, prompt preview, and copy/save workflows.
+- File-backed “last ready copy” recovery so the latest generated payload can be copied after closing or reopening the app.
 - Animated loading, empty, selection, hover, and copy-feedback states with Reduce Motion support.
+- Structured local logging for app lifecycle, scans, exports, and persistence failures without logging source contents.
 - macOS Settings for default output format, filters, hidden-file handling, and max file size.
 - Support links in the app menu, Settings, and sidebar for [Buy Me a Coffee](https://buymeacoffee.com/s1korrrr).
 
@@ -58,6 +60,7 @@ Output options are configurable in VS Code settings under “Codebase Combiner�
 
 - Launch with `swift run CodebaseExplorerApp` from `SwiftExplorerApp/`.
 - Choose a folder, adjust filters, select files, then copy or save the combined prompt.
+- The app keeps the last ready combined payload in local Application Support storage and offers a restore/copy control on relaunch.
 - Use the sidebar footer or macOS app menu for Settings and support actions.
 - Settings persist scan/output defaults through `@AppStorage`.
 
@@ -74,6 +77,7 @@ Output options are configurable in VS Code settings under “Codebase Combiner�
 - Build: `cd SwiftExplorerApp && swift build`
 - Tests: `cd SwiftExplorerApp && swift test`
 - Run: `cd SwiftExplorerApp && swift run CodebaseExplorerApp`
+- Bundle launch smoke: `./script/build_and_run.sh --verify`
 - Format (SwiftFormat): `cd SwiftExplorerApp && swiftformat .`
 - Format check: `cd SwiftExplorerApp && swiftformat --lint .`
 
