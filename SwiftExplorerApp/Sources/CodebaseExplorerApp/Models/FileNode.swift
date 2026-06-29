@@ -1,7 +1,6 @@
 import Foundation
 
 struct FileNode: Identifiable, Hashable {
-    let id = UUID()
     let name: String
     let relativePath: String
     let url: URL
@@ -10,6 +9,10 @@ struct FileNode: Identifiable, Hashable {
     let tokenCount: Int
     let sizeBytes: Int
     let content: String?
+
+    var id: String {
+        relativePath.isEmpty ? name : relativePath
+    }
 
     var childrenOrNil: [FileNode]? {
         children.isEmpty ? nil : children
