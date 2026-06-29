@@ -43,6 +43,33 @@ final class TreeLoaderTests: XCTestCase {
             XCTAssertEqual(files, [".hidden.txt"])
         }
     }
+
+    func testFileIDsAreStableAcrossReloads() throws {
+        try withTemporaryDirectory { root in
+            try writeFile(at: root.appendingPathComponent("app.swift"), contents: "print(\"ok\")")
+
+            let loader = TreeLoader()
+            let first = try loader.loadTree(
+                rootURL: root,
+                allowList: ["swift"],
+                excludeList: [],
+                maxFileSizeKB: 512,
+                skipHidden: true
+            )
+            let second = try loader.loadTree(
+                rootURL: root,
+                allowList: ["swift"],
+                excludeList: [],
+                maxFileSizeKB: 512,
+                skipHidden: true
+            )
+
+            let firstID = first.flattened.first { !$0.isDirectory }?.id
+            let secondID = second.flattened.first { !$0.isDirectory }?.id
+            XCTAssertEqual(firstID, "app.swift")
+            XCTAssertEqual(firstID, secondID)
+        }
+    }
 }
 
 private func withTemporaryDirectory(_ body: (URL) throws -> Void) throws {

@@ -8,18 +8,23 @@ Codebase Combiner helps you curate files, count tokens, and generate a ready-to-
 This repo ships two deliverables:
 
 - VS Code extension (Node/JavaScript)
-- macOS SwiftUI app (SwiftPM)
+- Native macOS SwiftUI app (SwiftPM)
 
 ## Features
 
 - Combine a workspace or folder into a single Markdown or text file.
 - Flexible include/exclude filters by glob and extension.
 - Token estimation for prompt sizing.
-- SwiftUI desktop app for visual selection and preview.
+- Native macOS sidebar/detail app for visual file selection, prompt preview, and copy/save workflows.
+- File-backed “last ready copy” recovery so the latest generated payload can be copied after closing or reopening the app.
+- Animated loading, empty, selection, hover, and copy-feedback states with Reduce Motion support.
+- Structured local logging for app lifecycle, scans, exports, and persistence failures without logging source contents.
+- macOS Settings for default output format, filters, hidden-file handling, and max file size.
+- Support links in the app menu, Settings, and sidebar for [Buy Me a Coffee](https://buymeacoffee.com/s1korrrr).
 
 ## Preview
 
-![Codebase Combiner app preview](image.png)
+![Codebase Combiner macOS app preview](docs/screenshots/macos-app.png)
 
 ## Getting started
 
@@ -37,7 +42,7 @@ Quick start (Swift app):
 
 ```sh
 cd SwiftExplorerApp
-swift run
+swift run CodebaseExplorerApp
 ```
 
 ## Usage
@@ -53,8 +58,11 @@ Output options are configurable in VS Code settings under “Codebase Combiner�
 
 ### macOS SwiftUI app
 
-- Launch with `swift run` (or run the built binary).
-- Choose a folder, adjust filters, select files, and copy/save the combined prompt.
+- Launch with `swift run CodebaseExplorerApp` from `SwiftExplorerApp/`.
+- Choose a folder, adjust filters, select files, then copy or save the combined prompt.
+- The app keeps the last ready combined payload in local Application Support storage and offers a restore/copy control on relaunch.
+- Use the sidebar footer or macOS app menu for Settings and support actions.
+- Settings persist scan/output defaults through `@AppStorage`.
 
 ## Development
 
@@ -66,8 +74,18 @@ Output options are configurable in VS Code settings under “Codebase Combiner�
 
 ### Swift
 
+- Build: `cd SwiftExplorerApp && swift build`
 - Tests: `cd SwiftExplorerApp && swift test`
-- Format (SwiftFormat): `swiftformat .`
+- Run: `cd SwiftExplorerApp && swift run CodebaseExplorerApp`
+- Bundle launch smoke: `./script/build_and_run.sh --verify`
+- Format (SwiftFormat): `cd SwiftExplorerApp && swiftformat .`
+- Format check: `cd SwiftExplorerApp && swiftformat --lint .`
+
+### Mac App Store packaging
+
+- Local bundle validation: `Packaging/AppStore/build_app_store_package.sh --skip-signing`
+- App Store signing/package flow: see `Packaging/AppStore/README.md`
+- Output directory: `dist/app-store/`
 
 ## Quality gates
 
