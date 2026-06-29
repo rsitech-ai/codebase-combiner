@@ -27,30 +27,9 @@ struct FiltersView: View {
                 .help("Open filter editor")
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
-                GridRow(alignment: .bottom) {
-                    filterField(
-                        title: "Include",
-                        placeholder: "swift,js,ts,tsx,jsx,md,txt,py",
-                        text: $allowList
-                    )
-
-                    filterField(
-                        title: "Exclude",
-                        placeholder: "png,jpg,jpeg,gif,mp4,zip,bin,lock",
-                        text: $excludeList
-                    )
-
-                    filterActions
-                }
-
-                GridRow(alignment: .bottom) {
-                    sizeCard
-                        .gridCellColumns(2)
-
-                    Color.clear
-                        .frame(width: 210, height: 1)
-                }
+            ViewThatFits(in: .horizontal) {
+                wideFilterLayout
+                compactFilterLayout
             }
 
             Text("Filters auto-apply after a short pause. Use Apply for an immediate refresh.")
@@ -74,6 +53,54 @@ struct FiltersView: View {
     }
 
     // MARK: - Subviews
+
+    private var wideFilterLayout: some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
+            GridRow(alignment: .bottom) {
+                filterField(
+                    title: "Include",
+                    placeholder: "swift,js,ts,tsx,jsx,md,txt,py",
+                    text: $allowList
+                )
+
+                filterField(
+                    title: "Exclude",
+                    placeholder: "png,jpg,jpeg,gif,mp4,zip,bin,lock",
+                    text: $excludeList
+                )
+
+                filterActions
+            }
+
+            GridRow(alignment: .bottom) {
+                sizeCard
+                    .gridCellColumns(2)
+
+                Color.clear
+                    .frame(width: 210, height: 1)
+            }
+        }
+    }
+
+    private var compactFilterLayout: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            filterField(
+                title: "Include",
+                placeholder: "swift,js,ts,tsx,jsx,md,txt,py",
+                text: $allowList
+            )
+
+            filterField(
+                title: "Exclude",
+                placeholder: "png,jpg,jpeg,gif,mp4,zip,bin,lock",
+                text: $excludeList
+            )
+
+            sizeCard
+            filterActions
+                .frame(maxWidth: 260, alignment: .leading)
+        }
+    }
 
     private func filterField(title: String, placeholder: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 5) {
