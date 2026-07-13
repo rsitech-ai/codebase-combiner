@@ -8,9 +8,25 @@ struct AppCommandState: Equatable {
     let isScanning: Bool
     let hasSelection: Bool
     let hasFreshOutput: Bool
+    let hasRecoveredOutput: Bool
+
+    init(
+        hasWorkspace: Bool,
+        isScanning: Bool,
+        hasSelection: Bool,
+        hasFreshOutput: Bool,
+        hasRecoveredOutput: Bool = false
+    ) {
+        self.hasWorkspace = hasWorkspace
+        self.isScanning = isScanning
+        self.hasSelection = hasSelection
+        self.hasFreshOutput = hasFreshOutput
+        self.hasRecoveredOutput = hasRecoveredOutput
+    }
 
     var canRefresh: Bool { hasWorkspace && !isScanning }
     var canExport: Bool { hasSelection && hasFreshOutput }
+    var canCopyRecovered: Bool { hasRecoveredOutput }
     var copyHelp: String {
         if !hasSelection {
             return "Select at least one file to copy the combined output."
@@ -29,6 +45,10 @@ struct AppCommandState: Equatable {
             return "Wait for the combined output to finish building."
         }
         return "Save combined output"
+    }
+
+    var copyRecoveredHelp: String {
+        hasRecoveredOutput ? "Copy the last recoverable output" : "There is no recovered output to copy."
     }
 
     var refreshHelp: String {
@@ -68,7 +88,8 @@ final class AppController: ObservableObject {
             hasWorkspace: workspace.rootURL != nil,
             isScanning: workspace.isScanning,
             hasSelection: !workspace.selectedFiles.isEmpty,
-            hasFreshOutput: output.hasFreshCurrentPayload
+            hasFreshOutput: output.hasFreshCurrentPayload,
+            hasRecoveredOutput: output.recoveredDraft != nil
         )
     }
 
@@ -122,6 +143,11 @@ final class AppController: ObservableObject {
     func copy() {
         guard commandState.canExport else { return }
         output.copyCurrent()
+    }
+
+    func copyRecovered() {
+        guard commandState.canCopyRecovered else { return }
+        output.copyRecovered()
     }
 
     func save() {
