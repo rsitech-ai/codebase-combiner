@@ -6,7 +6,9 @@ final class AppCommandStateTests: XCTestCase {
     func testCommandsNameMissingPrerequisites() {
         let empty = AppCommandState(hasWorkspace: false, isScanning: false, hasSelection: false, hasFreshOutput: false)
         XCTAssertFalse(empty.canRefresh)
+        XCTAssertFalse(empty.canCopyRecovered)
         XCTAssertEqual(empty.copyHelp, "Select at least one file to copy the combined output.")
+        XCTAssertEqual(empty.copyRecoveredHelp, "There is no recovered output to copy.")
 
         let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true, hasFreshOutput: true)
         XCTAssertTrue(ready.canRefresh)
@@ -43,6 +45,44 @@ final class AppCommandStateTests: XCTestCase {
         XCTAssertFalse(building.canExport)
         XCTAssertEqual(building.copyHelp, "Wait for the combined output to finish building.")
         XCTAssertEqual(building.saveHelp, "Wait for the combined output to finish building.")
+    }
+
+    func testRecoveredOutputCopyCapabilityIgnoresCurrentSelectionAndPayload() async {
+        let clipboard = ControllerClipboard()
+        let recoveredDraft = ClipboardDraft(
+            text: "recovered source",
+            format: .markdown,
+            fileCount: 1,
+            tokenCount: 2,
+            byteCount: 16,
+            rootPath: "/recovered-command",
+            generatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        let output = OutputStore(
+            drafts: ControllerDraftStore(draft: recoveredDraft),
+            clipboard: clipboard
+        )
+        let controller = AppController(
+            preferences: AppPreferences(defaults: UserDefaults(suiteName: "recovered-command-tests")!),
+            workspace: WorkspaceStore(loader: RecordingControllerWorkspaceLoader(result: controllerTreeResult(
+                rootURL: URL(fileURLWithPath: "/recovered-command")
+            ))),
+            output: output,
+            folderPicker: { nil },
+            saveDestinationPicker: { _ in nil }
+        )
+
+        await controller.start()
+
+        XCTAssertTrue(controller.workspace.selectedFiles.isEmpty)
+        XCTAssertNil(output.currentPayload)
+        XCTAssertFalse(controller.commandState.canExport)
+        XCTAssertTrue(controller.commandState.canCopyRecovered)
+        XCTAssertEqual(controller.commandState.copyRecoveredHelp, "Copy the last recoverable output")
+
+        controller.copyRecovered()
+
+        XCTAssertEqual(clipboard.writtenTexts, ["recovered source"])
     }
 
     func testControllerScansWithPreferenceSnapshotAndRebuildsForSharedInputs() async throws {
@@ -279,6 +319,43 @@ final class AppCommandStateTests: XCTestCase {
         loadCount = await loader.loadCount
         XCTAssertEqual(loadCount, 3)
     }
+
+    func testAllowAndExcludeChangesEachScheduleExactlyOneDebouncedRescan() async throws {
+        let defaultsName = "filter-rescan-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let rootURL = URL(fileURLWithPath: "/filter-rescan")
+        let loader = RecordingControllerWorkspaceLoader(result: controllerTreeResult(rootURL: rootURL))
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = AppController(
+            preferences: preferences,
+            workspace: WorkspaceStore(loader: loader),
+            output: OutputStore(drafts: ControllerDraftStore(), clipboard: ControllerClipboard()),
+            folderPicker: { nil },
+            saveDestinationPicker: { _ in nil }
+        )
+        await controller.scan(rootURL: rootURL)
+        var loadCount = await loader.loadCount
+        XCTAssertEqual(loadCount, 1)
+
+        preferences.values.allowList = "swift,md"
+        var didRescan = await loader.waitForLoadCount(2)
+        XCTAssertTrue(didRescan)
+        try await Task.sleep(for: .milliseconds(500))
+        loadCount = await loader.loadCount
+        var receivedPreferences = await loader.receivedPreferences
+        XCTAssertEqual(loadCount, 2)
+        XCTAssertEqual(receivedPreferences?.allowList, "swift,md")
+
+        preferences.values.excludeList = "png,zip"
+        didRescan = await loader.waitForLoadCount(3)
+        XCTAssertTrue(didRescan)
+        try await Task.sleep(for: .milliseconds(500))
+        loadCount = await loader.loadCount
+        receivedPreferences = await loader.receivedPreferences
+        XCTAssertEqual(loadCount, 3)
+        XCTAssertEqual(receivedPreferences?.excludeList, "png,zip")
+    }
 }
 
 private func controllerTreeResult(rootURL: URL) -> TreeLoadResult {
@@ -353,6 +430,10 @@ private enum ControllerLoaderError: LocalizedError {
 
 private actor ControllerDraftStore: DraftPersisting {
     private var draft: ClipboardDraft?
+
+    init(draft: ClipboardDraft? = nil) {
+        self.draft = draft
+    }
 
     func load() async throws -> ClipboardDraft? { draft }
     func save(_ draft: ClipboardDraft) async throws { self.draft = draft }
