@@ -1,44 +1,111 @@
-import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var controller: AppController
+    @ObservedObject private var preferences: AppPreferences
+    @ObservedObject private var workspace: WorkspaceStore
+    @ObservedObject private var output: OutputStore
     @SceneStorage("cc_sidebarWidth") private var sidebarWidth: Double = 320
     @SceneStorage("cc_previewWidth") private var previewWidth: Double = 460
     @State private var sidebarDragStartWidth: Double = 320
     @State private var previewDragStartWidth: Double = 460
     @State private var isResizingSidebar = false
     @State private var isResizingPreview = false
-    @State private var rootURL: URL?
-    @State private var rootNode: FileNode?
-    @State private var allFileNodes: [FileNode] = []
-    @State private var selectedFileNodes: [FileNode] = []
-    @State private var selectedBytes = 0
-    @State private var selectedTokenCount = 0
-    @State private var selectedIDs: Set<String> = []
-    @State private var promptPrefix: String = ""
-    @AppStorage("cc_allowListString") private var allowListString: String = "swift,js,ts,tsx,jsx,md,txt,py"
-    @AppStorage("cc_excludeListString") private var excludeListString: String = "png,jpg,jpeg,gif,mp4,zip,bin,lock"
-    @AppStorage("cc_maxFileSizeKB") private var maxFileSizeKB: Double = 512
-    @AppStorage("cc_skipHidden") private var skipHidden = true
-    @AppStorage("cc_outputMarkdown") private var outputMarkdown = true
-    @State private var isLoading = false
-    @State private var status: String = "Pick a folder to start."
-    @AppStorage("cc_showFilters") private var showFilters = true
     @State private var showToast = false
-    @State private var reloadDebounce: DispatchWorkItem?
     @State private var toastDismissWorkItem: DispatchWorkItem?
-    @State private var draftSaveWorkItem: DispatchWorkItem?
-    @State private var activeReloadID: UUID?
-    @State private var restoredDraft: ClipboardDraft?
 
-    private let loader = TreeLoader()
     private let estimator = TokenEstimator()
-    private let outputBuilder = CombinedOutputBuilder()
-    private let draftStore = ClipboardDraftStore()
     private let previewCharacterLimit = 20000
+
+    init(controller: AppController) {
+        _controller = ObservedObject(wrappedValue: controller)
+        _preferences = ObservedObject(wrappedValue: controller.preferences)
+        _workspace = ObservedObject(wrappedValue: controller.workspace)
+        _output = ObservedObject(wrappedValue: controller.output)
+    }
+
+    private var rootURL: URL? { workspace.rootURL }
+    private var rootNode: FileNode? { workspace.rootNode }
+    private var allFileNodes: [FileNode] { workspace.allFiles }
+    private var selectedFileNodes: [FileNode] { workspace.selectedFiles }
+    private var selectedBytes: Int { workspace.selectedBytes }
+    private var selectedTokenCount: Int { workspace.selectedTokens }
+    private var selectedIDs: Set<String> { workspace.selectedIDs }
+    private var promptPrefix: String { output.promptPrefix }
+    private var outputMarkdown: Bool { output.format == .markdown }
+    private var isLoading: Bool { workspace.isScanning }
+    private var status: String {
+        if workspace.isScanning { return workspace.status }
+        return output.status ?? workspace.status
+    }
+
+    private var showFilters: Bool { preferences.values.showFilters }
+    private var restoredDraft: ClipboardDraft? { output.recoveredDraft }
+
+    private var promptPrefixBinding: Binding<String> {
+        Binding(
+            get: { output.promptPrefix },
+            set: { output.promptPrefix = $0 }
+        )
+    }
+
+    private var outputMarkdownBinding: Binding<Bool> {
+        Binding(
+            get: { output.format == .markdown },
+            set: { output.format = $0 ? .markdown : .plainText }
+        )
+    }
+
+    private var showFiltersBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.values.showFilters },
+            set: { isPresented in
+                if preferences.values.showFilters != isPresented {
+                    controller.toggleFilters()
+                }
+            }
+        )
+    }
+
+    private var allowListBinding: Binding<String> {
+        Binding(
+            get: { preferences.values.allowList },
+            set: { preferences.values.allowList = $0 }
+        )
+    }
+
+    private var excludeListBinding: Binding<String> {
+        Binding(
+            get: { preferences.values.excludeList },
+            set: { preferences.values.excludeList = $0 }
+        )
+    }
+
+    private var maxFileSizeBinding: Binding<Double> {
+        Binding(
+            get: { preferences.values.maxFileSizeKB },
+            set: { preferences.values.maxFileSizeKB = $0 }
+        )
+    }
+
+    private var skipHiddenBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.values.skipHidden },
+            set: { preferences.values.skipHidden = $0 }
+        )
+    }
+
+    private var clearConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { output.isClearConfirmationPresented },
+            set: { isPresented in
+                if !isPresented {
+                    output.cancelClearRecoveredOutput()
+                }
+            }
+        )
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -50,11 +117,13 @@ struct ContentView: View {
 
             centerWorkspace
 
-            previewGrabber
+            if controller.isInspectorPresented {
+                previewGrabber
 
-            outputPreview
-                .frame(width: previewWidth)
-                .background(.bar)
+                outputPreview
+                    .frame(width: previewWidth)
+                    .background(.bar)
+            }
         }
         .frame(minWidth: 1320, minHeight: 820)
         .overlay(alignment: .topTrailing) {
@@ -66,13 +135,21 @@ struct ContentView: View {
             }
         }
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: showToast)
-        .onChange(of: maxFileSizeKB) { _ in scheduleReload() }
-        .onChange(of: skipHidden) { _ in scheduleReload() }
-        .onChange(of: allowListString) { _ in scheduleReload() }
-        .onChange(of: excludeListString) { _ in scheduleReload() }
-        .onChange(of: promptPrefix) { _ in scheduleDraftSave() }
-        .onChange(of: outputMarkdown) { _ in scheduleDraftSave() }
-        .onAppear(perform: loadRestoredDraft)
+        .task {
+            await controller.start()
+        }
+        .alert("Clear Saved Output?", isPresented: clearConfirmationBinding) {
+            Button("Cancel", role: .cancel) {
+                output.cancelClearRecoveredOutput()
+            }
+            Button("Clear", role: .destructive) {
+                Task {
+                    await output.confirmClearRecoveredOutput()
+                }
+            }
+        } message: {
+            Text("This removes the saved recovery copy from this Mac. Your source files are not changed.")
+        }
     }
 
     // MARK: - Subviews
@@ -108,7 +185,7 @@ struct ContentView: View {
                 Label("Workspace", systemImage: "sidebar.left")
                     .font(.headline.weight(.semibold))
                 Spacer()
-                Button(action: pickFolder) {
+                Button(action: controller.chooseFolder) {
                     Image(systemName: "folder.badge.plus")
                 }
                 .buttonStyle(.borderless)
@@ -129,14 +206,6 @@ struct ContentView: View {
             Divider()
 
             HStack(spacing: 8) {
-                Button {
-                    openWindow(id: "settings")
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-
                 Button {
                     AppLinks.openSupportPage()
                 } label: {
@@ -165,12 +234,11 @@ struct ContentView: View {
     private var fullControlBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 8) {
-                actionButton("Choose", systemImage: "folder", action: pickFolder)
-                    .keyboardShortcut("o", modifiers: [.command])
+                actionButton("Choose", systemImage: "folder", action: controller.chooseFolder)
 
-                actionButton("Refresh", systemImage: "arrow.clockwise", action: reloadTree)
-                    .disabled(rootURL == nil || isLoading)
-                    .keyboardShortcut("r", modifiers: [.command])
+                actionButton("Refresh", systemImage: "arrow.clockwise", action: controller.refresh)
+                    .disabled(!controller.commandState.canRefresh)
+                    .help(controller.commandState.refreshHelp)
             }
             .frame(minWidth: 220, alignment: .leading)
 
@@ -178,9 +246,9 @@ struct ContentView: View {
                 .frame(height: 20)
 
             HStack(spacing: 8) {
-                actionButton("All", systemImage: "checkmark.circle", action: selectAll)
+                actionButton("All", systemImage: "checkmark.circle", action: workspace.selectAll)
                     .disabled(rootNode == nil)
-                actionButton("Clear", systemImage: "xmark.circle", action: clearSelection)
+                actionButton("Clear", systemImage: "xmark.circle", action: workspace.clearSelection)
                     .disabled(selectedIDs.isEmpty)
             }
             .frame(width: 154, alignment: .leading)
@@ -198,19 +266,19 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .help(controller.commandState.copyHelp)
                 }
 
                 actionButton("Save", systemImage: "square.and.arrow.down", action: saveCombined)
                     .disabled(selectedFileNodes.isEmpty)
-                    .keyboardShortcut("s", modifiers: [.command])
+                    .help(controller.commandState.saveHelp)
             }
             .frame(width: 176, alignment: .leading)
 
             Spacer()
 
             HStack(spacing: 10) {
-                Picker("Output", selection: $outputMarkdown) {
+                Picker("Output", selection: outputMarkdownBinding) {
                     Text("Markdown").tag(true)
                     Text("Plain Text").tag(false)
                 }
@@ -218,7 +286,7 @@ struct ContentView: View {
                 .frame(width: 170)
                 .labelsHidden()
 
-                Toggle(isOn: $showFilters) {
+                Toggle(isOn: showFiltersBinding) {
                     Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 .toggleStyle(.button)
@@ -232,14 +300,13 @@ struct ContentView: View {
     private var compactControlBar: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                actionButton("Choose", systemImage: "folder", action: pickFolder)
-                    .keyboardShortcut("o", modifiers: [.command])
-                actionButton("Refresh", systemImage: "arrow.clockwise", action: reloadTree)
-                    .disabled(rootURL == nil || isLoading)
-                    .keyboardShortcut("r", modifiers: [.command])
-                actionButton("All", systemImage: "checkmark.circle", action: selectAll)
+                actionButton("Choose", systemImage: "folder", action: controller.chooseFolder)
+                actionButton("Refresh", systemImage: "arrow.clockwise", action: controller.refresh)
+                    .disabled(!controller.commandState.canRefresh)
+                    .help(controller.commandState.refreshHelp)
+                actionButton("All", systemImage: "checkmark.circle", action: workspace.selectAll)
                     .disabled(rootNode == nil)
-                actionButton("Clear", systemImage: "xmark.circle", action: clearSelection)
+                actionButton("Clear", systemImage: "xmark.circle", action: workspace.clearSelection)
                     .disabled(selectedIDs.isEmpty)
                 Spacer(minLength: 0)
             }
@@ -254,16 +321,16 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .help(controller.commandState.copyHelp)
                 }
 
                 actionButton("Save", systemImage: "square.and.arrow.down", action: saveCombined)
                     .disabled(selectedFileNodes.isEmpty)
-                    .keyboardShortcut("s", modifiers: [.command])
+                    .help(controller.commandState.saveHelp)
 
                 Spacer(minLength: 0)
 
-                Picker("Output", selection: $outputMarkdown) {
+                Picker("Output", selection: outputMarkdownBinding) {
                     Text("Markdown").tag(true)
                     Text("Plain Text").tag(false)
                 }
@@ -271,7 +338,7 @@ struct ContentView: View {
                 .frame(width: 170)
                 .labelsHidden()
 
-                Toggle(isOn: $showFilters) {
+                Toggle(isOn: showFiltersBinding) {
                     Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 .toggleStyle(.button)
@@ -282,16 +349,16 @@ struct ContentView: View {
     }
 
     private var promptEditor: some View {
-        PromptEditor(prompt: $promptPrefix, tokenCount: estimator.estimateTokens(in: promptPrefix))
+        PromptEditor(prompt: promptPrefixBinding, tokenCount: estimator.estimateTokens(in: promptPrefix))
     }
 
     private var filters: some View {
         FiltersView(
-            allowList: $allowListString,
-            excludeList: $excludeListString,
-            maxFileSizeKB: $maxFileSizeKB,
-            skipHidden: $skipHidden,
-            onApply: reloadTree
+            allowList: allowListBinding,
+            excludeList: excludeListBinding,
+            maxFileSizeKB: maxFileSizeBinding,
+            skipHidden: skipHiddenBinding,
+            onApply: controller.refresh
         )
     }
 
@@ -325,7 +392,7 @@ struct ContentView: View {
                     Text("Pick a folder to view files and token counts.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button(action: pickFolder) {
+                    Button(action: controller.chooseFolder) {
                         Label("Choose Folder", systemImage: "folder")
                     }
                     .buttonStyle(.borderedProminent)
@@ -595,94 +662,15 @@ struct ContentView: View {
             .appSurface(cornerRadius: 20, emphasized: true)
     }
 
-    // MARK: - Live reload helpers
-
-    private func scheduleReload() {
-        guard rootURL != nil else { return }
-        reloadDebounce?.cancel()
-        let work = DispatchWorkItem { reloadTree() }
-        reloadDebounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
-    }
-
-    private func scheduleDraftSave() {
-        guard !selectedFileNodes.isEmpty else { return }
-        draftSaveWorkItem?.cancel()
-        let work = DispatchWorkItem {
-            persistCurrentDraft(updateStatus: false)
-        }
-        draftSaveWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
-    }
-
-    private func loadRestoredDraft() {
-        do {
-            restoredDraft = try draftStore.load()
-            if restoredDraft != nil, selectedFileNodes.isEmpty {
-                status = "Last ready copy restored"
-                AppLog.persistence.info("Restored last ready payload")
-            }
-        } catch {
-            status = "Could not restore last copy: \(error.localizedDescription)"
-            AppLog.persistence.error("Failed to restore last ready payload: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    private func persistCurrentDraft(updateStatus: Bool) {
-        guard !selectedFileNodes.isEmpty else { return }
-        let text = combinedText()
-        persistDraft(text: text, updateStatus: updateStatus)
-    }
-
-    private func persistDraft(text: String, updateStatus: Bool) {
-        let draft = ClipboardDraft(
-            text: text,
-            format: outputMarkdown ? .markdown : .plainText,
-            fileCount: selectedFileNodes.count,
-            tokenCount: selectedTokenCount + estimator.estimateTokens(in: promptPrefix),
-            byteCount: selectedBytes,
-            rootPath: rootURL?.path,
-            generatedAt: Date()
-        )
-
-        let store = draftStore
-        DispatchQueue.global(qos: .utility).async {
-            do {
-                try store.save(draft)
-                DispatchQueue.main.async {
-                    restoredDraft = draft
-                    AppLog.persistence.info("Saved last ready payload with \(draft.fileCount, privacy: .public) files")
-                    if updateStatus {
-                        status = "Saved last ready copy"
-                    }
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    status = "Could not save last copy: \(error.localizedDescription)"
-                    AppLog.persistence.error("Failed to save last ready payload: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-        }
-    }
-
     private func copyRestoredDraft() {
-        guard let draft = restoredDraft else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(draft.text, forType: .string)
-        status = "Copied last ready payload"
-        showCopiedToast()
+        output.copyRecovered()
+        if output.status == "Copied the recovered output." {
+            showCopiedToast()
+        }
     }
 
     private func clearRestoredDraft() {
-        do {
-            try draftStore.clear()
-            restoredDraft = nil
-            status = "Cleared saved payload"
-            AppLog.persistence.info("Cleared saved payload")
-        } catch {
-            status = "Could not clear saved payload: \(error.localizedDescription)"
-            AppLog.persistence.error("Failed to clear saved payload: \(error.localizedDescription, privacy: .public)")
-        }
+        output.requestClearRecoveredOutput()
     }
 
     private func formattedDraftDate(_ date: Date) -> String {
@@ -704,13 +692,7 @@ struct ContentView: View {
     }
 
     private func toggle(node: FileNode, isOn: Bool) {
-        let ids = gatherFileIDs(node)
-        if isOn {
-            selectedIDs.formUnion(ids)
-        } else {
-            selectedIDs.subtract(ids)
-        }
-        refreshSelectionSnapshot()
+        workspace.toggle(node: node, isOn: isOn)
     }
 
     private func gatherFileIDs(_ node: FileNode) -> [String] {
@@ -720,149 +702,17 @@ struct ContentView: View {
         return [node.id]
     }
 
-    private func selectAll() {
-        selectedIDs = Set(allFileNodes.map(\.id))
-        refreshSelectionSnapshot()
-    }
-
-    private func clearSelection() {
-        selectedIDs.removeAll()
-        refreshSelectionSnapshot(autosave: false)
-    }
-
-    // MARK: - Data helpers
-
-    private nonisolated static func flatten(_ node: FileNode) -> [FileNode] {
-        [node] + node.children.flatMap { flatten($0) }
-    }
-
-    private nonisolated static func flattenFiles(_ node: FileNode) -> [FileNode] {
-        flatten(node)
-            .filter { !$0.isDirectory }
-            .sorted { $0.relativePath.localizedCaseInsensitiveCompare($1.relativePath) == .orderedAscending }
-    }
-
-    private func refreshSelectionSnapshot(autosave: Bool = true) {
-        let files = allFileNodes.filter { selectedIDs.contains($0.id) }
-        selectedFileNodes = files
-        selectedBytes = files.reduce(0) { $0 + $1.sizeBytes }
-        selectedTokenCount = files.reduce(0) { $0 + $1.tokenCount }
-        if autosave {
-            scheduleDraftSave()
-        }
-    }
-
-    private func parseExtensions(_ text: String) -> Set<String> {
-        let delimiters = CharacterSet(charactersIn: ",;|\n\t ")
-        return Set(text
-            .lowercased()
-            .components(separatedBy: delimiters)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
-            .filter { !$0.isEmpty })
-    }
-
     // MARK: - Actions
 
-    private func pickFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.title = "Choose a workspace root"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            rootURL = url
-            reloadTree()
-        }
-    }
-
-    private func reloadTree() {
-        guard let url = rootURL else { return }
-        let reloadID = UUID()
-        let previousSelectedIDs = selectedIDs
-        let shouldPreserveSelection = rootNode != nil
-        activeReloadID = reloadID
-        isLoading = true
-        status = "Scanning…"
-        AppLog.scan.info("Started workspace scan")
-
-        let allow = parseExtensions(allowListString)
-        let exclude = parseExtensions(excludeListString)
-        let maxSize = Int(maxFileSizeKB)
-        let skipHiddenFiles = skipHidden
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let tree = try loader.loadTree(
-                    rootURL: url,
-                    allowList: allow,
-                    excludeList: exclude,
-                    maxFileSizeKB: maxSize,
-                    skipHidden: skipHiddenFiles
-                )
-                let files = Self.flattenFiles(tree)
-                DispatchQueue.main.async {
-                    guard activeReloadID == reloadID else { return }
-                    let availableIDs = Set(files.map(\.id))
-                    let nextSelectedIDs = shouldPreserveSelection
-                        ? previousSelectedIDs.intersection(availableIDs)
-                        : availableIDs
-                    rootNode = tree
-                    allFileNodes = files
-                    selectedIDs = nextSelectedIDs
-                    refreshSelectionSnapshot()
-                    isLoading = false
-                    status = nextSelectedIDs.isEmpty ? "Loaded \(files.count) files" : "Loaded \(files.count) files, \(nextSelectedIDs.count) selected"
-                    AppLog.scan.info("Completed workspace scan with \(files.count, privacy: .public) files")
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    guard activeReloadID == reloadID else { return }
-                    isLoading = false
-                    status = error.localizedDescription
-                    AppLog.scan.error("Workspace scan failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-        }
-    }
-
     private func copyCombined() {
-        let text = combinedText()
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        status = "Copied to clipboard"
-        AppLog.export.info("Copied combined payload with \(selectedFileNodes.count, privacy: .public) files")
-        persistDraft(text: text, updateStatus: false)
-        showCopiedToast()
+        controller.copy()
+        if output.status == "Copied the current output." {
+            showCopiedToast()
+        }
     }
 
     private func saveCombined() {
-        let panel = NSSavePanel()
-        let markdownType = UTType(filenameExtension: "md") ?? .plainText
-        panel.allowedContentTypes = [outputMarkdown ? markdownType : .plainText]
-        panel.nameFieldStringValue = outputMarkdown ? "combined.md" : "combined.txt"
-        panel.canCreateDirectories = true
-
-        if panel.runModal() == .OK, let url = panel.url {
-            do {
-                let text = combinedText()
-                try text.write(to: url, atomically: true, encoding: .utf8)
-                persistDraft(text: text, updateStatus: false)
-                status = "Saved to \(url.lastPathComponent)"
-                AppLog.export.info("Saved combined payload with \(selectedFileNodes.count, privacy: .public) files")
-            } catch {
-                status = "Failed to save: \(error.localizedDescription)"
-                AppLog.export.error("Failed to save combined payload: \(error.localizedDescription, privacy: .public)")
-            }
-        }
-    }
-
-    private func combinedText() -> String {
-        outputBuilder.build(
-            promptPrefix: promptPrefix,
-            files: selectedFileNodes,
-            format: outputMarkdown ? .markdown : .plainText
-        )
+        controller.save()
     }
 
     private var outputPreviewSubtitle: String {
@@ -887,10 +737,7 @@ struct ContentView: View {
     }
 
     private var rawOutputPreviewText: String {
-        if !selectedFileNodes.isEmpty {
-            return combinedText()
-        }
-        return restoredDraft?.text ?? ""
+        output.visiblePayload ?? ""
     }
 
     private var outputPreviewText: String {
@@ -956,96 +803,5 @@ struct ContentView: View {
                     .frame(width: 1),
                 alignment: .trailing
             )
-    }
-}
-
-// MARK: - App entry
-
-@main
-struct CodebaseExplorerApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        WindowGroup("Codebase Combiner") {
-            ContentView()
-        }
-        .defaultSize(width: 1280, height: 820)
-        .windowResizability(.contentSize)
-        .commands {
-            CommandMenu("Support") {
-                Button("Buy Me a Coffee") {
-                    AppLinks.openSupportPage()
-                }
-            }
-        }
-
-        Settings {
-            SettingsView()
-        }
-
-        Window("Settings", id: "settings") {
-            SettingsView()
-        }
-        .windowResizability(.contentSize)
-    }
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillFinishLaunching(_: Notification) {
-        UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
-    }
-
-    func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool {
-        false
-    }
-
-    func application(_: NSApplication, shouldSaveSecureApplicationState _: NSCoder) -> Bool {
-        false
-    }
-
-    func application(_: NSApplication, shouldRestoreSecureApplicationState _: NSCoder) -> Bool {
-        false
-    }
-
-    func application(_: NSApplication, shouldSaveApplicationState _: NSCoder) -> Bool {
-        false
-    }
-
-    func application(_: NSApplication, shouldRestoreApplicationState _: NSCoder) -> Bool {
-        false
-    }
-
-    func applicationDidFinishLaunching(_: Notification) {
-        // Ensure the app accepts keyboard input even when launched as a plain executable.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        AppLog.lifecycle.info("Application finished launching")
-        DispatchQueue.main.async { self.disableWindowRestoration() }
-        DispatchQueue.main.async { self.recenterOffscreenWindowsIfNeeded() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.disableWindowRestoration() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.recenterOffscreenWindowsIfNeeded() }
-    }
-
-    @MainActor
-    private func disableWindowRestoration() {
-        for window in NSApp.windows {
-            window.isRestorable = false
-            window.restorationClass = nil
-            window.disableSnapshotRestoration()
-        }
-    }
-
-    @MainActor
-    private func recenterOffscreenWindowsIfNeeded() {
-        for window in NSApp.windows where window.isVisible {
-            guard !window.frame.isEmpty else { continue }
-            let isVisible = NSScreen.screens.contains { $0.visibleFrame.intersects(window.frame) }
-            if !isVisible, let screen = NSScreen.main {
-                window.setFrameOrigin(CGPoint(
-                    x: screen.visibleFrame.midX - window.frame.width / 2,
-                    y: screen.visibleFrame.midY - window.frame.height / 2
-                ))
-            }
-        }
     }
 }
