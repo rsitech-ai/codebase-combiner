@@ -1,7 +1,38 @@
 import SwiftUI
 
+enum RecoveredClearDismissalAction: Equatable {
+    case cancel
+    case preserveConfirmation
+}
+
+struct RecoveredClearConfirmationInteraction: Equatable {
+    private(set) var isDestructiveActionCommitted = false
+
+    mutating func commitDestructiveAction() {
+        isDestructiveActionCommitted = true
+    }
+
+    mutating func finishDestructiveAction() {
+        isDestructiveActionCommitted = false
+    }
+
+    func actionForDismissal() -> RecoveredClearDismissalAction {
+        isDestructiveActionCommitted ? .preserveConfirmation : .cancel
+    }
+}
+
 struct RecoveredOutputView: View {
-    @ObservedObject var store: OutputStore
+    @ObservedObject private var store: OutputStore
+    @State private var clearInteraction = RecoveredClearConfirmationInteraction()
+    private let actionArrangement: InspectorActionArrangement
+
+    init(
+        store: OutputStore,
+        actionArrangement: InspectorActionArrangement = .adaptive
+    ) {
+        _store = ObservedObject(wrappedValue: store)
+        self.actionArrangement = actionArrangement
+    }
 
     var body: some View {
         Group {
@@ -17,13 +48,16 @@ struct RecoveredOutputView: View {
             titleVisibility: .visible
         ) {
             Button("Clear Saved Output", role: .destructive) {
+                clearInteraction.commitDestructiveAction()
                 Task {
                     await store.confirmClearRecoveredOutput()
+                    clearInteraction.finishDestructiveAction()
                 }
             }
             Button("Cancel", role: .cancel) {
                 store.cancelClearRecoveredOutput()
             }
+            .keyboardShortcut(.defaultAction)
         } message: {
             Text("This removes only Codebase Combiner’s recoverable copy. Source files are not changed.")
         }
@@ -52,38 +86,8 @@ struct RecoveredOutputView: View {
             }
             .accessibilityElement(children: .combine)
 
-            HStack(spacing: 8) {
-                Button {
-                    if store.isRecoveredContentRevealed {
-                        store.hideRecoveredOutput()
-                    } else {
-                        store.revealRecoveredOutput()
-                    }
-                } label: {
-                    Label(
-                        store.isRecoveredContentRevealed ? "Hide Last Output" : "Reveal Last Output",
-                        systemImage: store.isRecoveredContentRevealed ? "eye.slash" : "eye"
-                    )
-                }
-                .help(store.isRecoveredContentRevealed ? "Hide the recovered source content" : "Reveal the recovered source content")
-                .accessibilityHint(store.isRecoveredContentRevealed ? "Conceals the recovered source content" : "Displays potentially sensitive recovered source content")
-
-                Button(action: store.copyRecovered) {
-                    Label("Copy Last", systemImage: "doc.on.clipboard")
-                }
-                .buttonStyle(.borderedProminent)
-                .help("Copy the last recoverable output without revealing it")
-                .accessibilityHint("Copies the recovered output without changing whether it is visible")
-
-                Spacer()
-
-                Button(role: .destructive, action: store.requestClearRecoveredOutput) {
-                    Label("Clear Saved Output", systemImage: "trash")
-                }
-                .help("Ask before clearing Codebase Combiner’s recoverable copy")
-                .accessibilityHint("Opens a confirmation before removing the app-owned recovery copy")
-            }
-            .controlSize(.small)
+            recoveryActions
+                .controlSize(.small)
 
             if store.isRecoveredContentRevealed {
                 Divider()
@@ -115,6 +119,68 @@ struct RecoveredOutputView: View {
         }
     }
 
+    @ViewBuilder
+    private var recoveryActions: some View {
+        if actionArrangement == .compact {
+            compactRecoveryActions
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    revealButton(fillsWidth: false)
+                    copyButton(fillsWidth: false)
+                    Spacer()
+                    clearButton(fillsWidth: false)
+                }
+                compactRecoveryActions
+            }
+        }
+    }
+
+    private var compactRecoveryActions: some View {
+        VStack(spacing: 8) {
+            revealButton(fillsWidth: true)
+            copyButton(fillsWidth: true)
+            clearButton(fillsWidth: true)
+        }
+    }
+
+    private func revealButton(fillsWidth: Bool) -> some View {
+        Button {
+            if store.isRecoveredContentRevealed {
+                store.hideRecoveredOutput()
+            } else {
+                store.revealRecoveredOutput()
+            }
+        } label: {
+            Label(
+                store.isRecoveredContentRevealed ? "Hide Last Output" : "Reveal Last Output",
+                systemImage: store.isRecoveredContentRevealed ? "eye.slash" : "eye"
+            )
+            .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+        }
+        .help(store.isRecoveredContentRevealed ? "Hide the recovered source content" : "Reveal the recovered source content")
+        .accessibilityHint(store.isRecoveredContentRevealed ? "Conceals the recovered source content" : "Displays potentially sensitive recovered source content")
+    }
+
+    private func copyButton(fillsWidth: Bool) -> some View {
+        Button(action: store.copyRecovered) {
+            Label("Copy Last", systemImage: "doc.on.clipboard")
+                .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+        }
+        .buttonStyle(.borderedProminent)
+        .help("Copy the last recoverable output without revealing it")
+        .accessibilityHint("Copies the recovered output without changing whether it is visible")
+    }
+
+    private func clearButton(fillsWidth: Bool) -> some View {
+        Button(role: .destructive, action: store.requestClearRecoveredOutput) {
+            Label("Clear Saved Output", systemImage: "trash")
+                .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+        }
+        .help("Ask before clearing Codebase Combiner’s recoverable copy")
+        .accessibilityHint("Opens a confirmation before removing the app-owned recovery copy")
+    }
+
     private func metadata(_ label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label.uppercased())
@@ -129,7 +195,7 @@ struct RecoveredOutputView: View {
         Binding(
             get: { store.isClearConfirmationPresented },
             set: { isPresented in
-                if !isPresented {
+                if !isPresented, clearInteraction.actionForDismissal() == .cancel {
                     store.cancelClearRecoveredOutput()
                 }
             }

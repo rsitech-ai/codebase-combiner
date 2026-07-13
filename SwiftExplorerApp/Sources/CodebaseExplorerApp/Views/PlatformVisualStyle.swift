@@ -5,6 +5,11 @@ enum WorkspaceControlArrangement: Equatable {
     case expanded
 }
 
+enum InspectorActionArrangement: Equatable {
+    case compact
+    case adaptive
+}
+
 struct AdaptiveWorkspaceLayout: Equatable {
     let mode: WorkspaceLayoutMode
 
@@ -37,11 +42,25 @@ struct AdaptiveWorkspaceLayout: Equatable {
             430
         }
     }
+
+    var inspectorContentWidthAtMinimum: Double {
+        inspectorMinimumWidth - 32
+    }
+
+    var inspectorActionArrangement: InspectorActionArrangement {
+        mode == .wide ? .adaptive : .compact
+    }
 }
 
 enum WorkspaceAccessibility {
-    static func selectAllHelp(hasWorkspace: Bool) -> String {
-        hasWorkspace ? "Select all files" : "Choose a workspace before selecting all files."
+    static func selectAllHelp(hasWorkspace: Bool, hasIncludableFiles: Bool) -> String {
+        if !hasWorkspace {
+            return "Choose a workspace before selecting all files."
+        }
+        if !hasIncludableFiles {
+            return "This workspace has no includable files to select."
+        }
+        return "Select all files"
     }
 
     static func clearSelectionHelp(hasSelection: Bool) -> String {
