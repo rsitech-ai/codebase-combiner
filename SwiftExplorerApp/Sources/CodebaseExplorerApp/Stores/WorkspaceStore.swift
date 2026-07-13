@@ -48,6 +48,7 @@ final class WorkspaceStore: ObservableObject {
     var status: String { state.status }
 
     private(set) var activeRequestID: UUID?
+    private var pendingRootURL: URL?
     private let loader: any WorkspaceLoading
 
     init(loader: any WorkspaceLoading = LiveWorkspaceLoader()) {
@@ -61,10 +62,10 @@ final class WorkspaceStore: ObservableObject {
         }
 
         let requestID = UUID()
-        let preserveSelection = rootNode != nil
+        let preserveSelection = self.rootURL == rootURL
         activeRequestID = requestID
+        pendingRootURL = rootURL
         var scanningState = state
-        scanningState.rootURL = rootURL
         scanningState.isScanning = true
         scanningState.status = "Scanning…"
         state = scanningState
@@ -74,6 +75,8 @@ final class WorkspaceStore: ObservableObject {
             accept(result, requestID: requestID, preserveSelection: preserveSelection)
         } catch {
             guard activeRequestID == requestID else { return }
+            activeRequestID = nil
+            pendingRootURL = nil
             var failedState = state
             failedState.isScanning = false
             failedState.status = error.localizedDescription
@@ -82,7 +85,7 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func accept(_ result: TreeLoadResult, requestID: UUID, preserveSelection: Bool) {
-        guard activeRequestID == requestID else { return }
+        guard activeRequestID == requestID, let acceptedRootURL = pendingRootURL else { return }
 
         let files = Self.flattenFiles(result.root)
         let availableIDs = Set(files.map(\.id))
@@ -92,6 +95,7 @@ final class WorkspaceStore: ObservableObject {
         let selection = Self.selectionSnapshot(files: files, selectedIDs: nextSelectedIDs)
 
         var acceptedState = state
+        acceptedState.rootURL = acceptedRootURL
         acceptedState.rootNode = result.root
         acceptedState.allFiles = files
         acceptedState.selectedIDs = nextSelectedIDs
@@ -103,6 +107,8 @@ final class WorkspaceStore: ObservableObject {
         acceptedState.status = nextSelectedIDs.isEmpty
             ? "Loaded \(files.count) files"
             : "Loaded \(files.count) files, \(nextSelectedIDs.count) selected"
+        activeRequestID = nil
+        pendingRootURL = nil
         state = acceptedState
     }
 

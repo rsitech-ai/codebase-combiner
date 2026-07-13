@@ -52,7 +52,7 @@ final class WorkspaceStoreTests: XCTestCase {
 
         let scan = Task { await store.scan(rootURL: rootURL, preferences: .init()) }
         await loader.waitUntilRequested(rootURL)
-        XCTAssertEqual(store.rootURL, rootURL)
+        XCTAssertNil(store.rootURL)
         XCTAssertEqual(store.status, "Scanning…")
         XCTAssertTrue(store.isScanning)
 
@@ -161,6 +161,61 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(store.allFiles.map(\.name), ["a.swift", "c.swift"])
         XCTAssertEqual(store.selectedFiles.map(\.name), ["a.swift"])
         XCTAssertEqual(store.status, "Loaded 2 files, 1 selected")
+    }
+
+    func testSwitchingRootsSelectsEveryFileInTheNewWorkspace() async throws {
+        let rootA = URL(fileURLWithPath: "/workspace-a")
+        let rootB = URL(fileURLWithPath: "/workspace-b")
+        let first = TreeLoadResult.fileFixture(rootURL: rootA, names: ["a-only.swift", "shared.swift"])
+        let second = TreeLoadResult.fileFixture(rootURL: rootB, names: ["b-new.swift", "shared.swift"])
+        let store = WorkspaceStore(loader: SequenceWorkspaceLoader(results: [first, second]))
+        await store.scan(rootURL: rootA, preferences: .init())
+        store.clearSelection()
+        let sharedFile = try XCTUnwrap(store.allFiles.first { $0.name == "shared.swift" })
+        store.toggle(node: sharedFile, isOn: true)
+
+        await store.scan(rootURL: rootB, preferences: .init())
+
+        XCTAssertEqual(store.rootURL, rootB)
+        XCTAssertEqual(store.selectedFiles, store.allFiles)
+        XCTAssertEqual(store.selectedIDs, Set(store.allFiles.map(\.id)))
+    }
+
+    func testFailedRootSwitchKeepsTheAcceptedWorkspaceCoherent() async throws {
+        let loader = ControlledWorkspaceLoader()
+        let store = WorkspaceStore(loader: loader)
+        let rootA = URL(fileURLWithPath: "/workspace-a")
+        let rootB = URL(fileURLWithPath: "/workspace-b")
+        let acceptedResult = TreeLoadResult.fileFixture(
+            rootURL: rootA,
+            names: ["a-only.swift", "shared.swift"]
+        )
+
+        let firstScan = Task { await store.scan(rootURL: rootA, preferences: .init()) }
+        await loader.waitUntilRequested(rootA)
+        await loader.succeed(rootA, with: acceptedResult)
+        await firstScan.value
+        store.clearSelection()
+        let selectedFile = try XCTUnwrap(store.allFiles.first { $0.name == "shared.swift" })
+        store.toggle(node: selectedFile, isOn: true)
+        let acceptedState = store.state
+
+        let failedScan = Task { await store.scan(rootURL: rootB, preferences: .init()) }
+        await loader.waitUntilRequested(rootB)
+        XCTAssertEqual(store.rootURL, rootA)
+        await loader.fail(rootB, with: LoaderError.currentScanFailed)
+        await failedScan.value
+
+        XCTAssertEqual(store.rootURL, rootA)
+        XCTAssertEqual(store.rootNode, acceptedState.rootNode)
+        XCTAssertEqual(store.allFiles, acceptedState.allFiles)
+        XCTAssertEqual(store.selectedFiles, acceptedState.selectedFiles)
+        XCTAssertEqual(store.selectedIDs, acceptedState.selectedIDs)
+        XCTAssertEqual(store.selectedBytes, acceptedState.selectedBytes)
+        XCTAssertEqual(store.selectedTokens, acceptedState.selectedTokens)
+        XCTAssertEqual(store.summary, acceptedState.summary)
+        XCTAssertEqual(store.status, "Current scan failed")
+        XCTAssertFalse(store.isScanning)
     }
 }
 
@@ -276,8 +331,10 @@ private extension TreeLoadResult {
         )
     }
 
-    static func fileFixture(names: [String]) -> TreeLoadResult {
-        let rootURL = URL(fileURLWithPath: "/workspace")
+    static func fileFixture(
+        rootURL: URL = URL(fileURLWithPath: "/workspace"),
+        names: [String]
+    ) -> TreeLoadResult {
         let files = names.enumerated().map { index, name in
             FileNode(
                 name: name,
