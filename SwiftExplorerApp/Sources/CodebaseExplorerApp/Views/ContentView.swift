@@ -523,6 +523,8 @@ struct ContentView: View {
                     Label("Copy Last", systemImage: "doc.on.clipboard")
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!controller.commandState.canCopyRecovered)
+                .help(controller.commandState.copyRecoveredHelp)
 
                 Button {
                     clearRestoredDraft()
@@ -611,8 +613,8 @@ struct ContentView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
-                            .disabled(!controller.commandState.canExport)
-                            .help(controller.commandState.copyHelp)
+                            .disabled(!controller.commandState.canCopyRecovered)
+                            .help(controller.commandState.copyRecoveredHelp)
                         } else {
                             Button {
                                 copyCombined()
@@ -671,7 +673,7 @@ struct ContentView: View {
     }
 
     private func copyRestoredDraft() {
-        output.copyRecovered()
+        controller.copyRecovered()
         if output.status == "Copied the recovered output." {
             showCopiedToast()
         }
