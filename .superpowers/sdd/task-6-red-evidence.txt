@@ -47,3 +47,46 @@ SwiftExplorerApp/Sources/CodebaseExplorerApp/Views/RecoveredOutputView.swift:58:
 error: fatalError
 
 Interpretation: the new privacy control was wired through the public store interface, then failed because the conceal action did not yet exist. The test requires `visiblePayload` to return to nil after Hide.
+
+Review correction cycle 5: destructive confirmation dismissal coordination
+Command: cd SwiftExplorerApp && swift test --filter AdaptiveWorkspaceSmokeTests
+Exit: 1
+
+Compiler signal:
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:97:27: error: cannot find 'RecoveredClearConfirmationInteraction' in scope
+error: fatalError
+
+Interpretation: the regression test first required a synchronous interaction policy that distinguishes outside/Cancel dismissal from SwiftUI's post-destructive-action presentation write. The coordinator did not yet exist.
+
+Review correction cycle 6: Select All empty-workspace prerequisite
+Command: cd SwiftExplorerApp && swift test --filter AdaptiveWorkspaceSmokeTests
+Exit: 1
+
+Compiler signal:
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:26:91: error: extra argument 'hasIncludableFiles' in call
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:41:90: error: extra argument 'hasIncludableFiles' in call
+error: fatalError
+
+Interpretation: the public accessibility-copy policy accepted only workspace presence and could not name the distinct accepted-workspace-with-zero-includable-files blocker.
+
+Review correction cycle 7: inspector format metadata precedence
+Command: cd SwiftExplorerApp && swift test --filter AdaptiveWorkspaceSmokeTests
+Exit: 1
+
+Compiler signal:
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:62:13: error: cannot find 'OutputInspectorPresentation' in scope
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:66:13: error: cannot find 'OutputInspectorPresentation' in scope
+error: fatalError
+
+Interpretation: the header had no testable metadata-precedence policy; it rendered the mutable live preference even when recovered metadata was the only payload metadata available.
+
+Review correction cycle 8: compact inspector action layout contract
+Command: cd SwiftExplorerApp && swift test --filter AdaptiveWorkspaceSmokeTests
+Exit: 1
+
+Compiler signal:
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:16:32: error: value of type 'AdaptiveWorkspaceLayout' has no member 'inspectorContentWidthAtMinimum'
+SwiftExplorerApp/Tests/CodebaseExplorerAppTests/AdaptiveWorkspaceSmokeTests.swift:17:32: error: value of type 'AdaptiveWorkspaceLayout' has no member 'inspectorActionArrangement'
+error: fatalError
+
+Interpretation: the 280-point inspector had no explicit contract for its approximately 248-point inset content width and no guaranteed compact action arrangement.

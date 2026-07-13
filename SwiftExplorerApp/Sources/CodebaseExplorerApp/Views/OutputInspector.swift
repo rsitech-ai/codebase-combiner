@@ -1,16 +1,30 @@
 import SwiftUI
 
+enum OutputInspectorPresentation {
+    static func formatLabel(
+        currentFormat: CombinedOutputFormat?,
+        recoveredDraft: ClipboardDraft?
+    ) -> String {
+        if let currentFormat {
+            return currentFormat == .markdown ? "Markdown" : "Plain Text"
+        }
+        return recoveredDraft?.formatLabel ?? "Output"
+    }
+}
+
 struct OutputInspector: View {
     @ObservedObject private var controller: AppController
     @ObservedObject private var workspace: WorkspaceStore
     @ObservedObject private var output: OutputStore
 
+    private let layout: AdaptiveWorkspaceLayout
     private let previewCharacterLimit = 20000
 
-    init(controller: AppController) {
+    init(controller: AppController, layout: AdaptiveWorkspaceLayout) {
         _controller = ObservedObject(wrappedValue: controller)
         _workspace = ObservedObject(wrappedValue: controller.workspace)
         _output = ObservedObject(wrappedValue: controller.output)
+        self.layout = layout
     }
 
     var body: some View {
@@ -33,7 +47,7 @@ struct OutputInspector: View {
                     .lineLimit(1)
             }
             Spacer()
-            Label(output.format == .markdown ? "Markdown" : "Plain Text", systemImage: output.format == .markdown ? "curlybraces.square" : "text.alignleft")
+            Label(inspectorFormatLabel, systemImage: inspectorFormatIcon)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -46,8 +60,11 @@ struct OutputInspector: View {
             currentOutput(payload)
         } else if output.recoveredDraft != nil || output.canClearRecoveredOutput {
             ScrollView {
-                RecoveredOutputView(store: output)
-                    .padding(12)
+                RecoveredOutputView(
+                    store: output,
+                    actionArrangement: layout.inspectorActionArrangement
+                )
+                .padding(12)
             }
         } else {
             VStack(spacing: 9) {
@@ -66,26 +83,11 @@ struct OutputInspector: View {
 
     private func currentOutput(_ payload: String) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button(action: controller.copy) {
-                    Label("Copy Combined Output", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!controller.commandState.canExport)
-                .help(controller.commandState.copyHelp)
-                .accessibilityHint(controller.commandState.copyHelp)
-
-                Button(action: controller.save) {
-                    Label("Save Combined Output", systemImage: "square.and.arrow.down")
-                }
-                .disabled(!controller.commandState.canExport)
-                .help(controller.commandState.saveHelp)
-                .accessibilityHint(controller.commandState.saveHelp)
-            }
-            .controlSize(.small)
-            .functionalChrome()
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            currentActions
+                .controlSize(.small)
+                .functionalChrome()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
 
             if payload.count > previewCharacterLimit {
                 Label(
@@ -129,5 +131,59 @@ struct OutputInspector: View {
     private func previewText(_ payload: String) -> String {
         guard payload.count > previewCharacterLimit else { return payload }
         return String(payload.prefix(previewCharacterLimit))
+    }
+
+    @ViewBuilder
+    private var currentActions: some View {
+        if layout.inspectorActionArrangement == .compact {
+            compactCurrentActions
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    copyButton(fillsWidth: false)
+                    saveButton(fillsWidth: false)
+                }
+                compactCurrentActions
+            }
+        }
+    }
+
+    private var compactCurrentActions: some View {
+        VStack(spacing: 8) {
+            copyButton(fillsWidth: true)
+            saveButton(fillsWidth: true)
+        }
+    }
+
+    private func copyButton(fillsWidth: Bool) -> some View {
+        Button(action: controller.copy) {
+            Label("Copy Combined Output", systemImage: "doc.on.doc")
+                .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!controller.commandState.canExport)
+        .help(controller.commandState.copyHelp)
+        .accessibilityHint(controller.commandState.copyHelp)
+    }
+
+    private func saveButton(fillsWidth: Bool) -> some View {
+        Button(action: controller.save) {
+            Label("Save Combined Output", systemImage: "square.and.arrow.down")
+                .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+        }
+        .disabled(!controller.commandState.canExport)
+        .help(controller.commandState.saveHelp)
+        .accessibilityHint(controller.commandState.saveHelp)
+    }
+
+    private var inspectorFormatLabel: String {
+        OutputInspectorPresentation.formatLabel(
+            currentFormat: output.currentFormat,
+            recoveredDraft: output.recoveredDraft
+        )
+    }
+
+    private var inspectorFormatIcon: String {
+        inspectorFormatLabel == "Markdown" ? "curlybraces.square" : "text.alignleft"
     }
 }
