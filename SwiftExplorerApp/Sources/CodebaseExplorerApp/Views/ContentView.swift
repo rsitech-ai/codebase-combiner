@@ -24,7 +24,7 @@ struct ContentView: View {
                         .layoutPriority(1)
 
                     if controller.isInspectorPresented {
-                        OutputInspector(controller: controller)
+                        OutputInspector(controller: controller, layout: layout)
                             .frame(
                                 minWidth: layout.inspectorMinimumWidth,
                                 idealWidth: layout.inspectorIdealWidth,
