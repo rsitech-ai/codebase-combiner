@@ -9,7 +9,6 @@ struct FiltersView: View {
     @Binding var skipHidden: Bool
     var onApply: () -> Void
 
-    @State private var applyDebounce: DispatchWorkItem?
     @State private var showFilterSheet = false
 
     var body: some View {
@@ -45,7 +44,6 @@ struct FiltersView: View {
                 allowList: $allowList,
                 excludeList: $excludeList,
                 onApply: {
-                    applyDebounce?.cancel()
                     onApply()
                 }
             )
@@ -109,11 +107,7 @@ struct FiltersView: View {
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit {
-                    applyDebounce?.cancel()
-                    onApply()
-                }
-                .onChange(of: text.wrappedValue) { _ in scheduleApply() }
+                .onSubmit(onApply)
                 .frame(minWidth: 220)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -165,15 +159,6 @@ struct FiltersView: View {
             .keyboardShortcut(.return, modifiers: [.command])
         }
         .frame(width: 210, alignment: .leading)
-    }
-
-    // MARK: - Helpers
-
-    private func scheduleApply() {
-        applyDebounce?.cancel()
-        let work = DispatchWorkItem { onApply() }
-        applyDebounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 }
 
