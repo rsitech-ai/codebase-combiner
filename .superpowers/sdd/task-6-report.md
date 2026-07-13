@@ -15,6 +15,15 @@ Task 6 replaces the fixed 1320×820 manual shell with one macOS 13-compatible ad
 - Static hover scaling/elevated shadows were removed from file rows, filters, prompt, selected-file review, stats, and recovery content. Native controls retain platform hover/press behavior.
 - The previous custom sidebar/preview drag state, support footer, duplicate selected-output action cards, and broad material-card stack were removed.
 
+## Review Corrections
+
+All four Task 6 review findings were corrected test-first:
+
+- The recovered-output destructive action now marks its intent synchronously before starting asynchronous confirmation. The dialog binding preserves the pending request for that path, while outside dismissal and the explicit Cancel button still cancel it. Cancel is the default keyboard action.
+- Current-output and recovered-output actions use compact vertical clusters at the regular inspector width. The regular 280-point inspector provides 248 points of content width; wide layouts may use a horizontal cluster only when `ViewThatFits` proves it fits.
+- Select All help now distinguishes an unchosen workspace from an accepted workspace containing zero includable files.
+- The inspector header reads captured payload metadata from `OutputStore.currentFormat`; if only a recovered draft exists, it uses the recovered draft format. It no longer relabels an existing payload when the live output preference changes.
+
 ## Platform Style Boundary
 
 `PlatformVisualStyle.swift` is the single availability boundary for modern presentation:
@@ -43,14 +52,21 @@ Apple Design Resources were refreshed on 2026-07-14 from <https://developer.appl
 
 Durable RED output is recorded in `.superpowers/sdd/task-6-red-evidence.txt`.
 
-Four vertical cycles were exercised:
+The initial four vertical cycles were exercised:
 
 1. Adaptive compact/regular/wide metrics failed because `AdaptiveWorkspaceLayout` did not exist, then passed after the smallest policy implementation.
 2. Disabled-action and partial-scan accessibility/privacy copy failed because `WorkspaceAccessibility` did not exist, then passed after the pure copy policy was added.
 3. The compile-time view contract failed only on missing `WorkspaceSidebar`, `PreparationWorkspace`, `OutputInspector`, and `RecoveredOutputView`, then passed after the adaptive component slice compiled.
 4. Re-concealing recovered output failed because the public hide action was absent, then passed with `visiblePayload == nil` after Hide.
 
-The final focused test class covers all three existing layout modes, adaptive metrics, accessibility prerequisite copy, privacy-safe partial-scan copy, construction of every new root component, concealed recovered content on load, and concealment after Reveal.
+Four review-correction RED/GREEN cycles followed:
+
+5. The confirmation coordinator test failed to compile because no synchronous destructive-intent policy existed, then passed with the coordinator and store-level confirmation integration.
+6. The three-state Select All help test failed on the missing `hasIncludableFiles` boundary, then passed with separate no-workspace and empty-workspace copy.
+7. The format-precedence test failed because no inspector presentation policy existed, then passed with current-payload metadata taking precedence over a recovered draft.
+8. The regular-width action-layout test failed because inspector content-width and action-arrangement policy were absent, then passed with a 248-point regular content width and compact/adaptive arrangements.
+
+The final focused test class contains 12 tests covering all three existing layout modes, adaptive metrics and action geometry, accessibility prerequisite copy, privacy-safe partial-scan copy, captured format metadata, construction of every new root component, concealed recovered content, the recovery confirmation interaction, and source invariants for the reviewed SwiftUI wiring.
 
 ## Files
 
@@ -75,17 +91,17 @@ Per task authority, `PLAN.md`, `TODO.md`, `MEMORY.md`, and the SDD ledger were n
 All requested Task 6 gates passed on 2026-07-14:
 
 - Baseline `cd SwiftExplorerApp && swift test` — 59 tests passed before edits.
-- `cd SwiftExplorerApp && swift test --filter AdaptiveWorkspaceSmokeTests` — 4 tests passed after the final GREEN cycle.
+- `cd SwiftExplorerApp && swift test --filter AdaptiveWorkspaceSmokeTests` — 12 tests passed after the review-correction GREEN cycles.
 - `cd SwiftExplorerApp && swiftformat .` — completed; no files required formatting.
 - `cd SwiftExplorerApp && swiftformat --lint .` — 0 of 40 files require formatting.
-- `cd SwiftExplorerApp && swift test` — 63 tests passed.
+- `cd SwiftExplorerApp && swift test` — 71 tests passed.
 - `cd SwiftExplorerApp && swift build -Xswiftc -warnings-as-errors` — Debug build passed.
 - `cd SwiftExplorerApp && swift build -c release -Xswiftc -warnings-as-errors` — Release build passed.
 - `cd SwiftExplorerApp && swift package dump-package` — minimum platform remains `macos 13.0`.
 - `git diff --check` — passed.
 - Static visual-style invariant — zero `hoverLift`, `appSurface`, legacy sidebar/preview width storage, or 1320-point root-minimum references remain in the view implementation; the only explicit `glassEffect` call is the guarded functional-chrome boundary.
-- `./script/build_and_run.sh --verify` — the worktree bundle built, was ad-hoc signed/validated, and launched from `/Users/s1kor/dev/apps/codebase_combiner/.worktrees/andrzej_agent_sota_lab/dist/app-store/Codebase Combiner.app`.
-- A final exact-path smoke launched the current packaged executable as PID `53340`, then terminated only that captured PID. The earlier failed Automation/Accessibility window-bounds probe was also terminated; no Task 6 smoke process remains.
+- `Packaging/AppStore/build_app_store_package.sh --skip-signing` — the worktree release product built and the app bundle was assembled, ad-hoc signed, and validated at `/Users/s1kor/dev/apps/codebase_combiner/.worktrees/andrzej_agent_sota_lab/dist/app-store/Codebase Combiner.app`.
+- A final exact-path smoke launched the current packaged executable as PID `92872`, verified that PID's command was the bundle executable, then terminated only that captured PID. No Task 6 smoke process remains.
 
 ## Scope Boundary
 

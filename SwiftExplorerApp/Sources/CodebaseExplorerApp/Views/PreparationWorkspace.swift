@@ -104,8 +104,8 @@ struct PreparationWorkspace: View {
                 Label("Select All", systemImage: "checkmark.circle")
             }
             .disabled(workspace.rootNode == nil || workspace.allFiles.isEmpty)
-            .help(WorkspaceAccessibility.selectAllHelp(hasWorkspace: workspace.rootNode != nil))
-            .accessibilityHint(WorkspaceAccessibility.selectAllHelp(hasWorkspace: workspace.rootNode != nil))
+            .help(selectAllHelp)
+            .accessibilityHint(selectAllHelp)
 
             Button(action: workspace.clearSelection) {
                 Label("Clear Selection", systemImage: "xmark.circle")
@@ -115,6 +115,13 @@ struct PreparationWorkspace: View {
             .accessibilityHint(WorkspaceAccessibility.clearSelectionHelp(hasSelection: !workspace.selectedIDs.isEmpty))
         }
         .controlSize(.small)
+    }
+
+    private var selectAllHelp: String {
+        WorkspaceAccessibility.selectAllHelp(
+            hasWorkspace: workspace.rootNode != nil,
+            hasIncludableFiles: !workspace.allFiles.isEmpty
+        )
     }
 
     private var outputOptions: some View {

@@ -13,17 +13,20 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
         XCTAssertEqual(compact.preparationMinimumWidth, 360)
         XCTAssertEqual(regular.controlArrangement, .compact)
         XCTAssertEqual(regular.preparationMinimumWidth, 430)
+        XCTAssertEqual(regular.inspectorContentWidthAtMinimum, 248)
+        XCTAssertEqual(regular.inspectorActionArrangement, .compact)
         XCTAssertLessThanOrEqual(
             220 + regular.preparationMinimumWidth + regular.inspectorMinimumWidth + 10,
             960
         )
         XCTAssertEqual(wide.controlArrangement, .expanded)
         XCTAssertEqual(wide.preparationMinimumWidth, 520)
+        XCTAssertEqual(wide.inspectorActionArrangement, .adaptive)
     }
 
     func testAccessibilityCopyNamesSelectionPrerequisitesAndKeepsScanSummaryPrivate() {
         XCTAssertEqual(
-            WorkspaceAccessibility.selectAllHelp(hasWorkspace: false),
+            WorkspaceAccessibility.selectAllHelp(hasWorkspace: false, hasIncludableFiles: false),
             "Choose a workspace before selecting all files."
         )
         XCTAssertEqual(
@@ -34,6 +37,67 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
             WorkspaceAccessibility.partialScanSummary(skippedCount: 3),
             "3 files were skipped during the scan. Review counts by reason; file paths stay private."
         )
+    }
+
+    func testSelectAllHelpDistinguishesAnEmptyAcceptedWorkspaceFromNoWorkspace() {
+        XCTAssertEqual(
+            WorkspaceAccessibility.selectAllHelp(hasWorkspace: true, hasIncludableFiles: false),
+            "This workspace has no includable files to select."
+        )
+        XCTAssertEqual(
+            WorkspaceAccessibility.selectAllHelp(hasWorkspace: true, hasIncludableFiles: true),
+            "Select all files"
+        )
+    }
+
+    func testInspectorFormatPrefersCurrentPayloadMetadataThenRecoveredMetadata() {
+        let recovered = ClipboardDraft(
+            text: "recovered",
+            format: .markdown,
+            fileCount: 1,
+            tokenCount: 2,
+            byteCount: 9,
+            rootPath: nil,
+            generatedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(
+            OutputInspectorPresentation.formatLabel(currentFormat: .plainText, recoveredDraft: recovered),
+            "Plain Text"
+        )
+        XCTAssertEqual(
+            OutputInspectorPresentation.formatLabel(currentFormat: nil, recoveredDraft: recovered),
+            "Markdown"
+        )
+        XCTAssertEqual(
+            OutputInspectorPresentation.formatLabel(currentFormat: nil, recoveredDraft: nil),
+            "Output"
+        )
+    }
+
+    func testOutputStoreCapturesAndInvalidatesCurrentPayloadFormatMetadata() async {
+        let output = OutputStore(
+            drafts: SmokeDraftStore(draft: nil),
+            clipboard: SmokeClipboard()
+        )
+        output.format = .plainText
+        let file = FileNode(
+            name: "App.swift",
+            relativePath: "Sources/App.swift",
+            url: URL(fileURLWithPath: "/tmp/Sources/App.swift"),
+            isDirectory: false,
+            tokenCount: 2,
+            sizeBytes: 12,
+            content: "print(\"ok\")"
+        )
+
+        await output.rebuild(files: [file], rootPath: "/tmp")
+
+        XCTAssertEqual(output.currentFormat, .plainText)
+
+        output.invalidateCurrentOutput()
+
+        XCTAssertNil(output.currentFormat)
     }
 
     func testAdaptiveViewsConstructForEveryPolicyWhileRecoveredPayloadStaysConcealed() async {
@@ -63,7 +127,7 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
             let layout = AdaptiveWorkspaceLayout(mode: WorkspaceLayoutPolicy.mode(for: width))
             _ = WorkspaceSidebar(controller: controller)
             _ = PreparationWorkspace(controller: controller, layout: layout)
-            _ = OutputInspector(controller: controller)
+            _ = OutputInspector(controller: controller, layout: layout)
             _ = ContentView(controller: controller)
         }
         _ = RecoveredOutputView(store: output)
@@ -91,6 +155,100 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
 
         XCTAssertNil(output.visiblePayload)
         XCTAssertFalse(output.isRecoveredContentRevealed)
+    }
+
+    func testCommittedRecoveredClearSurvivesPresentationDismissalUntilAsyncConfirmationStarts() {
+        var interaction = RecoveredClearConfirmationInteraction()
+
+        XCTAssertEqual(interaction.actionForDismissal(), .cancel)
+
+        interaction.commitDestructiveAction()
+
+        XCTAssertEqual(interaction.actionForDismissal(), .preserveConfirmation)
+
+        interaction.finishDestructiveAction()
+
+        XCTAssertEqual(interaction.actionForDismissal(), .cancel)
+    }
+
+    func testCommittedDismissalPolicyLeavesStoreConfirmationAvailableForDestructiveAction() async {
+        let output = OutputStore(
+            drafts: SmokeDraftStore(draft: ClipboardDraft(
+                text: "private source",
+                format: .markdown,
+                fileCount: 1,
+                tokenCount: 3,
+                byteCount: 14,
+                rootPath: nil,
+                generatedAt: Date(timeIntervalSince1970: 0)
+            )),
+            clipboard: SmokeClipboard()
+        )
+        await output.loadRecoveredDraft()
+        output.requestClearRecoveredOutput()
+        var interaction = RecoveredClearConfirmationInteraction()
+        interaction.commitDestructiveAction()
+
+        if interaction.actionForDismissal() == .cancel {
+            output.cancelClearRecoveredOutput()
+        }
+
+        XCTAssertTrue(output.isClearConfirmationPresented)
+
+        await output.confirmClearRecoveredOutput()
+
+        XCTAssertNil(output.recoveredDraft)
+        XCTAssertFalse(output.isClearConfirmationPresented)
+    }
+
+    func testClearConfirmationSourceCommitsBeforeAsyncConfirmAndDefaultsFocusToCancel() throws {
+        let source = try sourceFile(named: "RecoveredOutputView.swift")
+        let commit = try XCTUnwrap(source.range(of: "clearInteraction.commitDestructiveAction()"))
+        let task = try XCTUnwrap(source.range(of: "Task {", range: commit.upperBound ..< source.endIndex))
+        let confirm = try XCTUnwrap(source.range(
+            of: "await store.confirmClearRecoveredOutput()",
+            range: task.upperBound ..< source.endIndex
+        ))
+
+        XCTAssertLessThan(commit.lowerBound, task.lowerBound)
+        XCTAssertLessThan(task.lowerBound, confirm.lowerBound)
+        XCTAssertTrue(source.contains("clearInteraction.actionForDismissal() == .cancel"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(.defaultAction)"))
+    }
+
+    func testInspectorActionSourcesProvideCompactAndAdaptiveArrangements() throws {
+        let current = try sourceFile(named: "OutputInspector.swift")
+        let recovered = try sourceFile(named: "RecoveredOutputView.swift")
+
+        XCTAssertTrue(current.contains("layout.inspectorActionArrangement == .compact"))
+        XCTAssertTrue(current.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(current.contains("compactCurrentActions"))
+        XCTAssertTrue(current.contains("copyButton(fillsWidth: true)"))
+        XCTAssertTrue(current.contains("saveButton(fillsWidth: true)"))
+
+        XCTAssertTrue(recovered.contains("actionArrangement == .compact"))
+        XCTAssertTrue(recovered.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(recovered.contains("compactRecoveryActions"))
+        XCTAssertTrue(recovered.contains("clearButton(fillsWidth: true)"))
+    }
+
+    func testInspectorHeaderSourceUsesCapturedCurrentThenRecoveredMetadata() throws {
+        let source = try sourceFile(named: "OutputInspector.swift")
+
+        XCTAssertTrue(source.contains("currentFormat: output.currentFormat"))
+        XCTAssertTrue(source.contains("recoveredDraft: output.recoveredDraft"))
+        XCTAssertFalse(source.contains("Label(output.format"))
+    }
+
+    private func sourceFile(named name: String) throws -> String {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = packageRoot
+            .appendingPathComponent("Sources/CodebaseExplorerApp/Views")
+            .appendingPathComponent(name)
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }
 
