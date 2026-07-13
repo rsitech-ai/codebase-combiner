@@ -6,6 +6,7 @@ final class OutputStore: ObservableObject {
     @Published var promptPrefix = ""
     @Published var format: CombinedOutputFormat = .markdown
     @Published private(set) var currentPayload: String?
+    @Published private(set) var isBuilding = false
     @Published private(set) var recoveredDraft: ClipboardDraft?
     @Published private(set) var isRecoveredContentRevealed = false
     @Published private(set) var canClearRecoveredOutput = false
@@ -37,12 +38,24 @@ final class OutputStore: ObservableObject {
         return recoveredDraft?.text
     }
 
+    var hasFreshCurrentPayload: Bool {
+        currentPayload != nil && !isBuilding
+    }
+
+    func invalidateCurrentOutput() {
+        buildGeneration &+= 1
+        isBuilding = true
+        currentPayload = nil
+    }
+
     func rebuild(files: [FileNode], rootPath: String?) async {
         let buildRevision = beginBuildOperation()
         isClearConfirmationPresented = false
+        isBuilding = true
+        currentPayload = nil
 
         guard !files.isEmpty else {
-            currentPayload = nil
+            isBuilding = false
             return
         }
 
@@ -56,6 +69,7 @@ final class OutputStore: ObservableObject {
         guard isCurrentBuild(buildRevision) else { return }
         let recoveryRevision = beginRecoveryOperation(cancelPendingBuild: false)
         currentPayload = output.payload
+        isBuilding = false
 
         do {
             try await persistence.save(output.draft)
@@ -172,6 +186,10 @@ final class OutputStore: ObservableObject {
     private func beginRecoveryOperation(cancelPendingBuild: Bool) -> Int {
         if cancelPendingBuild {
             buildGeneration &+= 1
+            if isBuilding {
+                isBuilding = false
+                currentPayload = nil
+            }
         }
         recoveryGeneration &+= 1
         return recoveryGeneration

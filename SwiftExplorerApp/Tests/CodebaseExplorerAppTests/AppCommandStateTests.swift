@@ -4,32 +4,45 @@ import XCTest
 @MainActor
 final class AppCommandStateTests: XCTestCase {
     func testCommandsNameMissingPrerequisites() {
-        let empty = AppCommandState(hasWorkspace: false, isScanning: false, hasSelection: false)
+        let empty = AppCommandState(hasWorkspace: false, isScanning: false, hasSelection: false, hasFreshOutput: false)
         XCTAssertFalse(empty.canRefresh)
         XCTAssertEqual(empty.copyHelp, "Select at least one file to copy the combined output.")
 
-        let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true)
+        let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true, hasFreshOutput: true)
         XCTAssertTrue(ready.canRefresh)
         XCTAssertTrue(ready.canExport)
     }
 
     func testRefreshHelpNamesWhetherWorkspaceOrScanIsBlocking() {
-        let missingWorkspace = AppCommandState(hasWorkspace: false, isScanning: false, hasSelection: false)
+        let missingWorkspace = AppCommandState(hasWorkspace: false, isScanning: false, hasSelection: false, hasFreshOutput: false)
         XCTAssertEqual(missingWorkspace.refreshHelp, "Choose a folder before refreshing the workspace.")
 
-        let scanning = AppCommandState(hasWorkspace: true, isScanning: true, hasSelection: true)
+        let scanning = AppCommandState(hasWorkspace: true, isScanning: true, hasSelection: true, hasFreshOutput: true)
         XCTAssertEqual(scanning.refreshHelp, "Wait for the current workspace scan to finish.")
 
-        let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true)
+        let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true, hasFreshOutput: true)
         XCTAssertEqual(ready.refreshHelp, "Refresh workspace")
     }
 
     func testSaveHelpNamesMissingSelection() {
-        let empty = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: false)
+        let empty = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: false, hasFreshOutput: false)
         XCTAssertEqual(empty.saveHelp, "Select at least one file to save the combined output.")
 
-        let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true)
+        let ready = AppCommandState(hasWorkspace: true, isScanning: false, hasSelection: true, hasFreshOutput: true)
         XCTAssertEqual(ready.saveHelp, "Save combined output")
+    }
+
+    func testCopyAndSaveHelpNamePendingOutputBuild() {
+        let building = AppCommandState(
+            hasWorkspace: true,
+            isScanning: false,
+            hasSelection: true,
+            hasFreshOutput: false
+        )
+
+        XCTAssertFalse(building.canExport)
+        XCTAssertEqual(building.copyHelp, "Wait for the combined output to finish building.")
+        XCTAssertEqual(building.saveHelp, "Wait for the combined output to finish building.")
     }
 
     func testControllerScansWithPreferenceSnapshotAndRebuildsForSharedInputs() async throws {
@@ -95,20 +108,247 @@ final class AppCommandStateTests: XCTestCase {
         await waitUntilController { output.currentPayload == nil }
         XCTAssertFalse(controller.commandState.canExport)
     }
+
+    func testExportStaysDisabledUntilTheLatestOutputBuildCompletes() async {
+        let rootURL = URL(fileURLWithPath: "/pending-build")
+        let file = FileNode(
+            name: "Current.swift",
+            relativePath: "Current.swift",
+            url: rootURL.appendingPathComponent("Current.swift"),
+            isDirectory: false,
+            tokenCount: 2,
+            sizeBytes: 8,
+            content: "let revision = 1"
+        )
+        let result = TreeLoadResult(
+            root: FileNode(
+                name: "pending-build",
+                relativePath: "pending-build",
+                url: rootURL,
+                isDirectory: true,
+                children: [file],
+                tokenCount: file.tokenCount,
+                sizeBytes: file.sizeBytes,
+                content: nil
+            ),
+            summary: ScanSummary()
+        )
+        let builder = ControlledControllerOutputBuilder()
+        let clipboard = ControllerClipboard()
+        let savePicker = SavePickerRecorder()
+        let workspace = WorkspaceStore(loader: RecordingControllerWorkspaceLoader(result: result))
+        let output = OutputStore(
+            drafts: ControllerDraftStore(),
+            clipboard: clipboard,
+            builder: builder
+        )
+        let controller = AppController(
+            preferences: AppPreferences(defaults: UserDefaults(suiteName: "pending-build-tests")!),
+            workspace: workspace,
+            output: output,
+            folderPicker: { nil },
+            saveDestinationPicker: savePicker.destination
+        )
+
+        await controller.scan(rootURL: rootURL)
+        await builder.waitForRequest(count: 1)
+
+        XCTAssertTrue(workspace.selectedFiles.isEmpty == false)
+        XCTAssertTrue(output.isBuilding)
+        XCTAssertFalse(controller.commandState.canExport)
+        XCTAssertNil(output.currentPayload)
+        controller.copy()
+        controller.save()
+        XCTAssertTrue(clipboard.writtenTexts.isEmpty)
+        XCTAssertEqual(savePicker.requestCount, 0)
+
+        await builder.completeRequest(at: 0)
+        await waitUntilController { controller.commandState.canExport }
+        let acceptedPayload = output.currentPayload
+        XCTAssertFalse(output.isBuilding)
+        XCTAssertNotNil(acceptedPayload)
+
+        output.promptPrefix = "Use the new revision."
+        await builder.waitForRequest(count: 2)
+
+        XCTAssertTrue(output.isBuilding)
+        XCTAssertFalse(controller.commandState.canExport)
+        XCTAssertNil(output.currentPayload)
+        controller.copy()
+        controller.save()
+        XCTAssertTrue(clipboard.writtenTexts.isEmpty)
+        XCTAssertEqual(savePicker.requestCount, 0)
+
+        await builder.completeRequest(at: 1)
+        await waitUntilController { controller.commandState.canExport }
+        XCTAssertFalse(output.isBuilding)
+        XCTAssertNotEqual(output.currentPayload, acceptedPayload)
+        XCTAssertTrue(output.currentPayload?.contains("Use the new revision.") == true)
+    }
+
+    func testLatestWorkspaceFailureOverridesPriorOutputSuccessStatus() async {
+        let rootURL = URL(fileURLWithPath: "/status-recency")
+        let result = controllerTreeResult(rootURL: rootURL)
+        let loader = FailingRefreshControllerWorkspaceLoader(firstResult: result)
+        let output = OutputStore(
+            drafts: ControllerDraftStore(),
+            clipboard: ControllerClipboard()
+        )
+        let controller = AppController(
+            preferences: AppPreferences(defaults: UserDefaults(suiteName: "status-recency-tests")!),
+            workspace: WorkspaceStore(loader: loader),
+            output: output,
+            folderPicker: { nil },
+            saveDestinationPicker: { _ in nil }
+        )
+
+        await controller.scan(rootURL: rootURL)
+        await waitUntilController { output.status == "Saved recoverable output." }
+
+        await controller.scan(rootURL: rootURL)
+
+        XCTAssertEqual(output.status, "Saved recoverable output.")
+        XCTAssertEqual(controller.displayStatus, "Refresh failed")
+    }
+
+    func testLatestMaximumSizeValidationOverridesPriorOutputSuccessStatus() async throws {
+        let rootURL = URL(fileURLWithPath: "/validation-recency")
+        let output = OutputStore(
+            drafts: ControllerDraftStore(),
+            clipboard: ControllerClipboard()
+        )
+        let defaultsName = "validation-recency-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = AppController(
+            preferences: preferences,
+            workspace: WorkspaceStore(loader: RecordingControllerWorkspaceLoader(result: controllerTreeResult(rootURL: rootURL))),
+            output: output,
+            folderPicker: { nil },
+            saveDestinationPicker: { _ in nil }
+        )
+
+        await controller.scan(rootURL: rootURL)
+        await waitUntilController { output.status == "Saved recoverable output." }
+
+        preferences.values.maxFileSizeKB = 31
+        await controller.scan(rootURL: rootURL)
+
+        XCTAssertEqual(output.status, "Saved recoverable output.")
+        XCTAssertEqual(controller.displayStatus, "Correct the maximum file size before scanning.")
+    }
+
+    func testHiddenAndMaximumSizePreferenceChangesRescanWithoutFeedbackLoops() async throws {
+        let defaultsName = "preference-rescan-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let rootURL = URL(fileURLWithPath: "/preference-rescan")
+        let loader = RecordingControllerWorkspaceLoader(result: controllerTreeResult(rootURL: rootURL))
+        let preferences = AppPreferences(defaults: defaults)
+        let output = OutputStore(
+            drafts: ControllerDraftStore(),
+            clipboard: ControllerClipboard()
+        )
+        let controller = AppController(
+            preferences: preferences,
+            workspace: WorkspaceStore(loader: loader),
+            output: output,
+            folderPicker: { nil },
+            saveDestinationPicker: { _ in nil }
+        )
+        await controller.scan(rootURL: rootURL)
+        var loadCount = await loader.loadCount
+        XCTAssertEqual(loadCount, 1)
+
+        preferences.values.skipHidden = false
+        var didRescan = await loader.waitForLoadCount(2)
+        var receivedPreferences = await loader.receivedPreferences
+        XCTAssertTrue(didRescan)
+        XCTAssertEqual(receivedPreferences?.skipHidden, false)
+
+        preferences.values.maxFileSizeKB = 1024
+        didRescan = await loader.waitForLoadCount(3)
+        receivedPreferences = await loader.receivedPreferences
+        XCTAssertTrue(didRescan)
+        XCTAssertEqual(receivedPreferences?.maxFileSizeKB, 1024)
+
+        output.format = .plainText
+        preferences.values.showFilters.toggle()
+        try await Task.sleep(for: .milliseconds(500))
+        loadCount = await loader.loadCount
+        XCTAssertEqual(loadCount, 3)
+    }
+}
+
+private func controllerTreeResult(rootURL: URL) -> TreeLoadResult {
+    let file = FileNode(
+        name: "App.swift",
+        relativePath: "App.swift",
+        url: rootURL.appendingPathComponent("App.swift"),
+        isDirectory: false,
+        tokenCount: 2,
+        sizeBytes: 8,
+        content: "let app = true"
+    )
+    return TreeLoadResult(
+        root: FileNode(
+            name: rootURL.lastPathComponent,
+            relativePath: rootURL.lastPathComponent,
+            url: rootURL,
+            isDirectory: true,
+            children: [file],
+            tokenCount: file.tokenCount,
+            sizeBytes: file.sizeBytes,
+            content: nil
+        ),
+        summary: ScanSummary()
+    )
 }
 
 private actor RecordingControllerWorkspaceLoader: WorkspaceLoading {
     private(set) var receivedPreferences: AppPreferences.Values?
     private let result: TreeLoadResult
+    private(set) var loadCount = 0
 
     init(result: TreeLoadResult) {
         self.result = result
     }
 
     func load(rootURL _: URL, preferences: AppPreferences.Values) async throws -> TreeLoadResult {
+        loadCount += 1
         receivedPreferences = preferences
         return result
     }
+
+    func waitForLoadCount(_ expectedCount: Int) async -> Bool {
+        for _ in 0 ..< 800 {
+            if loadCount >= expectedCount { return true }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        return false
+    }
+}
+
+private actor FailingRefreshControllerWorkspaceLoader: WorkspaceLoading {
+    private let firstResult: TreeLoadResult
+    private var loadCount = 0
+
+    init(firstResult: TreeLoadResult) {
+        self.firstResult = firstResult
+    }
+
+    func load(rootURL _: URL, preferences _: AppPreferences.Values) async throws -> TreeLoadResult {
+        loadCount += 1
+        guard loadCount == 1 else { throw ControllerLoaderError.refreshFailed }
+        return firstResult
+    }
+}
+
+private enum ControllerLoaderError: LocalizedError {
+    case refreshFailed
+
+    var errorDescription: String? { "Refresh failed" }
 }
 
 private actor ControllerDraftStore: DraftPersisting {
@@ -121,7 +361,59 @@ private actor ControllerDraftStore: DraftPersisting {
 
 @MainActor
 private final class ControllerClipboard: ClipboardWriting {
-    func write(_: String) throws {}
+    private(set) var writtenTexts: [String] = []
+
+    func write(_ text: String) throws {
+        writtenTexts.append(text)
+    }
+}
+
+@MainActor
+private final class SavePickerRecorder {
+    private(set) var requestCount = 0
+
+    func destination(format _: CombinedOutputFormat) -> URL? {
+        requestCount += 1
+        return URL(fileURLWithPath: "/tmp/combined.md")
+    }
+}
+
+private actor ControlledControllerOutputBuilder: OutputBuilding {
+    private var inputs: [OutputBuildInput] = []
+    private var continuations: [CheckedContinuation<BuiltOutput, Never>?] = []
+
+    func build(_ input: OutputBuildInput) async -> BuiltOutput {
+        await withCheckedContinuation { continuation in
+            inputs.append(input)
+            continuations.append(continuation)
+        }
+    }
+
+    func waitForRequest(count: Int) async {
+        while inputs.count < count {
+            await Task.yield()
+        }
+    }
+
+    func completeRequest(at index: Int) {
+        let input = inputs[index]
+        let payload = CombinedOutputBuilder().build(
+            promptPrefix: input.promptPrefix,
+            files: input.files,
+            format: input.format
+        )
+        let draft = ClipboardDraft(
+            text: payload,
+            format: input.format,
+            fileCount: input.files.count,
+            tokenCount: input.files.reduce(0) { $0 + $1.tokenCount },
+            byteCount: input.files.reduce(0) { $0 + $1.sizeBytes },
+            rootPath: input.rootPath,
+            generatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        continuations[index]?.resume(returning: BuiltOutput(payload: payload, draft: draft))
+        continuations[index] = nil
+    }
 }
 
 @MainActor
