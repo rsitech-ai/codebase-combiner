@@ -35,10 +35,6 @@ struct ContentView: View {
     private var promptPrefix: String { output.promptPrefix }
     private var outputMarkdown: Bool { output.format == .markdown }
     private var isLoading: Bool { workspace.isScanning }
-    private var status: String {
-        if workspace.isScanning { return workspace.status }
-        return output.status ?? workspace.status
-    }
 
     private var showFilters: Bool { preferences.values.showFilters }
     private var restoredDraft: ClipboardDraft? { output.recoveredDraft }
@@ -168,7 +164,7 @@ struct ContentView: View {
 
             Spacer()
 
-            Label(status, systemImage: isLoading ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+            Label(controller.displayStatus, systemImage: isLoading ? "arrow.triangle.2.circlepath" : "checkmark.circle")
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(.secondary)
                 .font(.callout)
@@ -260,17 +256,19 @@ struct ContentView: View {
                 if selectedFileNodes.isEmpty {
                     actionButton("Copy", systemImage: "doc.on.doc", action: {})
                         .disabled(true)
+                        .help(controller.commandState.copyHelp)
                 } else {
                     Button(action: copyCombined) {
                         Label("Copy", systemImage: "doc.on.doc")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
+                    .disabled(!controller.commandState.canExport)
                     .help(controller.commandState.copyHelp)
                 }
 
                 actionButton("Save", systemImage: "square.and.arrow.down", action: saveCombined)
-                    .disabled(selectedFileNodes.isEmpty)
+                    .disabled(!controller.commandState.canExport)
                     .help(controller.commandState.saveHelp)
             }
             .frame(width: 176, alignment: .leading)
@@ -315,17 +313,19 @@ struct ContentView: View {
                 if selectedFileNodes.isEmpty {
                     actionButton("Copy", systemImage: "doc.on.doc", action: {})
                         .disabled(true)
+                        .help(controller.commandState.copyHelp)
                 } else {
                     Button(action: copyCombined) {
                         Label("Copy", systemImage: "doc.on.doc")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
+                    .disabled(!controller.commandState.canExport)
                     .help(controller.commandState.copyHelp)
                 }
 
                 actionButton("Save", systemImage: "square.and.arrow.down", action: saveCombined)
-                    .disabled(selectedFileNodes.isEmpty)
+                    .disabled(!controller.commandState.canExport)
                     .help(controller.commandState.saveHelp)
 
                 Spacer(minLength: 0)
@@ -433,6 +433,8 @@ struct ContentView: View {
                         Label("Copy", systemImage: "doc.on.doc")
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(!controller.commandState.canExport)
+                    .help(controller.commandState.copyHelp)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
 
                     Button {
@@ -440,6 +442,8 @@ struct ContentView: View {
                     } label: {
                         Label("Save", systemImage: "square.and.arrow.down")
                     }
+                    .disabled(!controller.commandState.canExport)
+                    .help(controller.commandState.saveHelp)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
@@ -607,6 +611,8 @@ struct ContentView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
+                            .disabled(!controller.commandState.canExport)
+                            .help(controller.commandState.copyHelp)
                         } else {
                             Button {
                                 copyCombined()
@@ -623,6 +629,8 @@ struct ContentView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .disabled(!controller.commandState.canExport)
+                            .help(controller.commandState.saveHelp)
                         }
                     }
                     .padding(12)
