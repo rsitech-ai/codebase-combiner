@@ -7,19 +7,28 @@ struct AppCommandState: Equatable {
     let hasWorkspace: Bool
     let isScanning: Bool
     let hasSelection: Bool
+    let hasFreshOutput: Bool
 
     var canRefresh: Bool { hasWorkspace && !isScanning }
-    var canExport: Bool { hasSelection }
+    var canExport: Bool { hasSelection && hasFreshOutput }
     var copyHelp: String {
-        hasSelection
-            ? "Copy combined output"
-            : "Select at least one file to copy the combined output."
+        if !hasSelection {
+            return "Select at least one file to copy the combined output."
+        }
+        if !hasFreshOutput {
+            return "Wait for the combined output to finish building."
+        }
+        return "Copy combined output"
     }
 
     var saveHelp: String {
-        hasSelection
-            ? "Save combined output"
-            : "Select at least one file to save the combined output."
+        if !hasSelection {
+            return "Select at least one file to save the combined output."
+        }
+        if !hasFreshOutput {
+            return "Wait for the combined output to finish building."
+        }
+        return "Save combined output"
     }
 
     var refreshHelp: String {
@@ -43,6 +52,7 @@ final class AppController: ObservableObject {
     let output: OutputStore
 
     @Published var isInspectorPresented = true
+    @Published private(set) var displayStatus: String
 
     private let folderPicker: FolderPicker
     private let saveDestinationPicker: SaveDestinationPicker
@@ -50,13 +60,15 @@ final class AppController: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
     private var rebuildTask: Task<Void, Never>?
+    private var preferenceRescanTask: Task<Void, Never>?
     private var hasStarted = false
 
     var commandState: AppCommandState {
         AppCommandState(
             hasWorkspace: workspace.rootURL != nil,
             isScanning: workspace.isScanning,
-            hasSelection: !workspace.selectedFiles.isEmpty
+            hasSelection: !workspace.selectedFiles.isEmpty,
+            hasFreshOutput: output.hasFreshCurrentPayload
         )
     }
 
@@ -86,6 +98,7 @@ final class AppController: ObservableObject {
         self.output = output
         self.folderPicker = folderPicker
         self.saveDestinationPicker = saveDestinationPicker
+        displayStatus = workspace.status
         output.format = preferences.values.outputMarkdown ? .markdown : .plainText
         bindSharedState()
     }
@@ -132,15 +145,21 @@ final class AppController: ObservableObject {
     }
 
     func scan(rootURL: URL) async {
+        preferenceRescanTask?.cancel()
+        await performScan(rootURL: rootURL)
+    }
+
+    private func performScan(rootURL: URL) async {
         let snapshot = preferences.values
         await workspace.scan(rootURL: rootURL, preferences: snapshot)
     }
 
     private func beginScan(rootURL: URL) {
+        preferenceRescanTask?.cancel()
         scanTask?.cancel()
         scanTask = Task { [weak self] in
             guard let self else { return }
-            await scan(rootURL: rootURL)
+            await performScan(rootURL: rootURL)
         }
     }
 
@@ -153,6 +172,23 @@ final class AppController: ObservableObject {
             .store(in: &cancellables)
         output.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        workspace.$state
+            .map(\.status)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] status in
+                self?.displayStatus = status
+            }
+            .store(in: &cancellables)
+
+        output.$status
+            .compactMap(\.self)
+            .removeDuplicates()
+            .sink { [weak self] status in
+                self?.displayStatus = status
+            }
             .store(in: &cancellables)
 
         preferences.$values
@@ -181,6 +217,15 @@ final class AppController: ObservableObject {
             }
             .store(in: &cancellables)
 
+        preferences.$values
+            .map(ScanPreferences.init)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.schedulePreferenceRescan()
+            }
+            .store(in: &cancellables)
+
         Publishers.CombineLatest3(
             workspace.$state
                 .map { RebuildSource(files: $0.selectedFiles, rootPath: $0.rootURL?.path) }
@@ -196,10 +241,27 @@ final class AppController: ObservableObject {
     }
 
     private func rebuildOutput(from source: RebuildSource) {
+        displayStatus = source.files.isEmpty ? workspace.status : "Building combined output…"
+        output.invalidateCurrentOutput()
         rebuildTask?.cancel()
         rebuildTask = Task { [weak self] in
             guard let self else { return }
             await output.rebuild(files: source.files, rootPath: source.rootPath)
+        }
+    }
+
+    private func schedulePreferenceRescan() {
+        preferenceRescanTask?.cancel()
+        guard let rootURL = workspace.rootURL else { return }
+
+        preferenceRescanTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            await performScan(rootURL: rootURL)
         }
     }
 
@@ -225,4 +287,18 @@ final class AppController: ObservableObject {
 private struct RebuildSource: Equatable {
     let files: [FileNode]
     let rootPath: String?
+}
+
+private struct ScanPreferences: Equatable {
+    let allowList: String
+    let excludeList: String
+    let maxFileSizeKB: Double
+    let skipHidden: Bool
+
+    init(_ values: AppPreferences.Values) {
+        allowList = values.allowList
+        excludeList = values.excludeList
+        maxFileSizeKB = values.maxFileSizeKB
+        skipHidden = values.skipHidden
+    }
 }
