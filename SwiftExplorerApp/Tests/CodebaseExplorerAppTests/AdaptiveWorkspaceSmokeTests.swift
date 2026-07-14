@@ -24,6 +24,30 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
         XCTAssertEqual(wide.inspectorActionArrangement, .adaptive)
     }
 
+    func testVisiblePanesNeverOverlapPreparationAtSupportedWidths() {
+        for width in [960.0, 1180.0, 1320.0, 1680.0] {
+            let layout = AdaptiveWorkspaceLayout(mode: WorkspaceLayoutPolicy.mode(for: width))
+            for sidebarPresented in [false, true] {
+                for inspectorPresented in [false, true] {
+                    let frames = WorkspacePaneGeometry.frames(
+                        totalWidth: width,
+                        layout: layout,
+                        isSidebarPresented: sidebarPresented,
+                        isInspectorPresented: inspectorPresented
+                    )
+
+                    XCTAssertGreaterThanOrEqual(frames.preparation.width, layout.preparationMinimumWidth)
+                    if sidebarPresented {
+                        XCTAssertFalse(frames.sidebar.intersects(frames.preparation))
+                    }
+                    if inspectorPresented {
+                        XCTAssertFalse(frames.inspector.intersects(frames.preparation))
+                    }
+                }
+            }
+        }
+    }
+
     func testAccessibilityCopyNamesSelectionPrerequisitesAndKeepsScanSummaryPrivate() {
         XCTAssertEqual(
             WorkspaceAccessibility.selectAllHelp(hasWorkspace: false, hasIncludableFiles: false),
@@ -263,7 +287,8 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
 
         XCTAssertTrue(source.contains("InspectorPaneHost("))
         XCTAssertTrue(source.contains("SidebarPaneHost("))
-        XCTAssertTrue(source.contains("ZStack(alignment: .trailing)"))
+        XCTAssertTrue(source.contains("ZStack(alignment: .leading)"))
+        XCTAssertTrue(source.contains("WorkspacePaneGeometry.frames("))
         XCTAssertTrue(source.contains(".accessibilityHidden(!isPresented)"))
         XCTAssertFalse(source.contains(".inspector(isPresented:"))
         XCTAssertFalse(source.contains("HSplitView"))
@@ -271,21 +296,40 @@ final class AdaptiveWorkspaceSmokeTests: XCTestCase {
     }
 
     func testSidebarPresentationAlsoAvoidsLayoutSizeMutation() {
-        XCTAssertEqual(SidebarPanePresentation.width, 280)
-        XCTAssertEqual(SidebarPanePresentation.offset(isPresented: true), 0)
-        XCTAssertEqual(SidebarPanePresentation.offset(isPresented: false), -281)
+        let compact = AdaptiveWorkspaceLayout(mode: .compact)
+        let regular = AdaptiveWorkspaceLayout(mode: .regular)
+        let wide = AdaptiveWorkspaceLayout(mode: .wide)
+
+        XCTAssertEqual(SidebarPanePresentation.width(layout: compact), 220)
+        XCTAssertEqual(SidebarPanePresentation.width(layout: regular), 240)
+        XCTAssertEqual(SidebarPanePresentation.width(layout: wide), 280)
+        XCTAssertEqual(SidebarPanePresentation.offset(isPresented: true, layout: regular), 0)
+        XCTAssertEqual(SidebarPanePresentation.offset(isPresented: false, layout: regular), -241)
     }
 
     func testSidebarToolbarControlDoesNotMutateToolbarPreferences() throws {
         let source = try sourceFile(named: "ContentView.swift")
 
-        XCTAssertTrue(source.contains("Button {\n                isSidebarPresented.toggle()"))
+        XCTAssertTrue(source.contains("Button(action: controller.toggleSidebar)"))
         XCTAssertTrue(source.contains("Label(\"Toggle Workspace Sidebar\""))
-        XCTAssertFalse(source.contains("Toggle(isOn: $isSidebarPresented)"))
+        XCTAssertFalse(source.contains("@State private var isSidebarPresented"))
         XCTAssertFalse(source.contains("systemImage: \"sidebar.leading\""))
         XCTAssertTrue(source.contains("Button(action: controller.toggleInspector)"))
         XCTAssertTrue(source.contains("Label(\"Toggle Output Inspector\""))
         XCTAssertFalse(source.contains("Toggle(isOn: inspectorBinding)"))
+    }
+
+    func testRecoveryControlsExposeVisibleRetryPaths() throws {
+        let sidebar = try sourceFile(named: "WorkspaceSidebar.swift")
+        let inspector = try sourceFile(named: "OutputInspector.swift")
+        let recovered = try sourceFile(named: "RecoveredOutputView.swift")
+
+        XCTAssertTrue(sidebar.contains("Button(action: controller.retryFailedScan)"))
+        XCTAssertTrue(sidebar.contains("Label(\"Choose Another Folder\""))
+        XCTAssertTrue(inspector.contains("Button(action: controller.retryPersistence)"))
+        XCTAssertTrue(inspector.contains("Your full current output is still available."))
+        XCTAssertTrue(recovered.contains("Label(\"Retry Loading\""))
+        XCTAssertTrue(recovered.contains("await store.loadRecoveredDraft()"))
     }
 
     private func sourceFile(named name: String) throws -> String {

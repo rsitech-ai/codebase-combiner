@@ -63,10 +63,57 @@ enum InspectorPanePresentation {
 }
 
 enum SidebarPanePresentation {
-    static let width: Double = 280
+    static func width(layout: AdaptiveWorkspaceLayout) -> Double {
+        switch layout.mode {
+        case .compact:
+            220
+        case .regular:
+            240
+        case .wide:
+            280
+        }
+    }
 
-    static func offset(isPresented: Bool) -> Double {
-        isPresented ? 0 : -(width + 1)
+    static func offset(isPresented: Bool, layout: AdaptiveWorkspaceLayout) -> Double {
+        isPresented ? 0 : -(width(layout: layout) + 1)
+    }
+}
+
+struct WorkspacePaneFrame: Equatable {
+    let x: Double
+    let width: Double
+
+    var maxX: Double { x + width }
+
+    func intersects(_ other: WorkspacePaneFrame) -> Bool {
+        x < other.maxX && other.x < maxX
+    }
+}
+
+struct WorkspacePaneFrames: Equatable {
+    let sidebar: WorkspacePaneFrame
+    let preparation: WorkspacePaneFrame
+    let inspector: WorkspacePaneFrame
+}
+
+enum WorkspacePaneGeometry {
+    static func frames(
+        totalWidth: Double,
+        layout: AdaptiveWorkspaceLayout,
+        isSidebarPresented: Bool,
+        isInspectorPresented: Bool
+    ) -> WorkspacePaneFrames {
+        let sidebarWidth = SidebarPanePresentation.width(layout: layout) + 1
+        let inspectorWidth = InspectorPanePresentation.width(layout: layout) + 1
+        let leadingInset = isSidebarPresented ? sidebarWidth : 0
+        let trailingInset = isInspectorPresented ? inspectorWidth : 0
+        let preparationWidth = max(0, totalWidth - leadingInset - trailingInset)
+
+        return WorkspacePaneFrames(
+            sidebar: WorkspacePaneFrame(x: 0, width: sidebarWidth),
+            preparation: WorkspacePaneFrame(x: leadingInset, width: preparationWidth),
+            inspector: WorkspacePaneFrame(x: totalWidth - inspectorWidth, width: inspectorWidth)
+        )
     }
 }
 

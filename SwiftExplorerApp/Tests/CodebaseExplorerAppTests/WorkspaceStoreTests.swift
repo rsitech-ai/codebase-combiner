@@ -4,6 +4,56 @@ import XCTest
 
 @MainActor
 final class WorkspaceStoreTests: XCTestCase {
+    func testFailedScanRetainsTypedRetryRequestAndRetryCanRecover() async {
+        let rootURL = URL(fileURLWithPath: "/retry-workspace")
+        let preferences = AppPreferences.Values(allowList: "swift", maxFileSizeKB: 256)
+        let loader = RetryWorkspaceLoader(result: .fileFixture(rootURL: rootURL, names: ["Recovered.swift"]))
+        let store = WorkspaceStore(loader: loader)
+
+        let failedOutcome = await store.scan(rootURL: rootURL, preferences: preferences)
+
+        XCTAssertEqual(failedOutcome, .failed)
+        XCTAssertEqual(store.scanFailure?.kind, .scanFailed)
+        XCTAssertEqual(store.scanFailure?.message, "Current scan failed")
+        XCTAssertTrue(store.canRetryFailedScan)
+
+        let retryOutcome = await store.retryFailedScan()
+
+        XCTAssertEqual(retryOutcome, .accepted(fileCount: 1, selectedCount: 1, skippedCount: 0))
+        XCTAssertNil(store.scanFailure)
+        XCTAssertFalse(store.canRetryFailedScan)
+        XCTAssertEqual(store.rootURL, rootURL)
+        let attemptCount = await loader.attemptCount
+        let lastPreferences = await loader.lastPreferences
+        XCTAssertEqual(attemptCount, 2)
+        XCTAssertEqual(lastPreferences, preferences)
+    }
+
+    func testFailedScanRetryCannotReplaceANewerChosenWorkspace() async {
+        let failedRoot = URL(fileURLWithPath: "/failed-retry")
+        let newerRoot = URL(fileURLWithPath: "/newer-workspace")
+        let loader = RetryRaceWorkspaceLoader(
+            failedRoot: failedRoot,
+            failedResult: .fileFixture(rootURL: failedRoot, names: ["old.swift"]),
+            newerRoot: newerRoot,
+            newerResult: .fileFixture(rootURL: newerRoot, names: ["new.swift"])
+        )
+        let store = WorkspaceStore(loader: loader)
+        _ = await store.scan(rootURL: failedRoot, preferences: .init())
+
+        let retry = Task { await store.retryFailedScan() }
+        await loader.waitUntilRetryRequested()
+        let newerOutcome = await store.scan(rootURL: newerRoot, preferences: .init())
+        await loader.completeRetry()
+        let retryOutcome = await retry.value
+
+        XCTAssertEqual(newerOutcome, .accepted(fileCount: 1, selectedCount: 1, skippedCount: 0))
+        XCTAssertEqual(retryOutcome, .stale)
+        XCTAssertEqual(store.rootURL, newerRoot)
+        XCTAssertEqual(store.allFiles.map(\.name), ["new.swift"])
+        XCTAssertNil(store.scanFailure)
+    }
+
     func testStaleResultCannotReplaceNewerWorkspace() async {
         let loader = ControlledWorkspaceLoader()
         let store = WorkspaceStore(loader: loader)
@@ -241,6 +291,66 @@ private actor SequenceWorkspaceLoader: WorkspaceLoading {
 
     func load(rootURL _: URL, preferences _: AppPreferences.Values) async throws -> TreeLoadResult {
         results.removeFirst()
+    }
+}
+
+private actor RetryWorkspaceLoader: WorkspaceLoading {
+    private let result: TreeLoadResult
+    private(set) var attemptCount = 0
+    private(set) var lastPreferences: AppPreferences.Values?
+
+    init(result: TreeLoadResult) {
+        self.result = result
+    }
+
+    func load(rootURL _: URL, preferences: AppPreferences.Values) async throws -> TreeLoadResult {
+        attemptCount += 1
+        lastPreferences = preferences
+        guard attemptCount > 1 else { throw LoaderError.currentScanFailed }
+        return result
+    }
+}
+
+private actor RetryRaceWorkspaceLoader: WorkspaceLoading {
+    private let failedRoot: URL
+    private let failedResult: TreeLoadResult
+    private let newerRoot: URL
+    private let newerResult: TreeLoadResult
+    private var failedRootAttempts = 0
+    private var retryWasRequested = false
+    private var retryContinuation: CheckedContinuation<TreeLoadResult, Never>?
+
+    init(failedRoot: URL, failedResult: TreeLoadResult, newerRoot: URL, newerResult: TreeLoadResult) {
+        self.failedRoot = failedRoot
+        self.failedResult = failedResult
+        self.newerRoot = newerRoot
+        self.newerResult = newerResult
+    }
+
+    func load(rootURL: URL, preferences _: AppPreferences.Values) async throws -> TreeLoadResult {
+        if rootURL == failedRoot {
+            failedRootAttempts += 1
+            guard failedRootAttempts > 1 else { throw LoaderError.currentScanFailed }
+            retryWasRequested = true
+            return await withCheckedContinuation { continuation in
+                retryContinuation = continuation
+            }
+        }
+        if rootURL == newerRoot {
+            return newerResult
+        }
+        return failedResult
+    }
+
+    func waitUntilRetryRequested() async {
+        while !retryWasRequested {
+            await Task.yield()
+        }
+    }
+
+    func completeRetry() {
+        retryContinuation?.resume(returning: failedResult)
+        retryContinuation = nil
     }
 }
 

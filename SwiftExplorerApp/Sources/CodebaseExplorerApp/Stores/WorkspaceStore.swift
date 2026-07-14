@@ -26,6 +26,15 @@ enum WorkspaceScanOutcome: Equatable, Sendable {
     case stale
 }
 
+struct WorkspaceScanFailure: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case scanFailed
+    }
+
+    let kind: Kind
+    let message: String
+}
+
 @MainActor
 final class WorkspaceStore: ObservableObject {
     struct State: Equatable {
@@ -39,6 +48,7 @@ final class WorkspaceStore: ObservableObject {
         var summary = ScanSummary()
         var isScanning = false
         var status = "Choose a workspace to begin."
+        var scanFailure: WorkspaceScanFailure?
     }
 
     @Published private(set) var state = State()
@@ -53,9 +63,12 @@ final class WorkspaceStore: ObservableObject {
     var summary: ScanSummary { state.summary }
     var isScanning: Bool { state.isScanning }
     var status: String { state.status }
+    var scanFailure: WorkspaceScanFailure? { state.scanFailure }
+    var canRetryFailedScan: Bool { failedRequest != nil && !state.isScanning }
 
     private(set) var activeRequestID: UUID?
     private var pendingRootURL: URL?
+    private var failedRequest: ScanRequest?
     private let loader: any WorkspaceLoading
 
     init(loader: any WorkspaceLoading = LiveWorkspaceLoader()) {
@@ -76,6 +89,8 @@ final class WorkspaceStore: ObservableObject {
         var scanningState = state
         scanningState.isScanning = true
         scanningState.status = "Scanning…"
+        scanningState.scanFailure = nil
+        failedRequest = nil
         state = scanningState
 
         do {
@@ -88,6 +103,8 @@ final class WorkspaceStore: ObservableObject {
             var failedState = state
             failedState.isScanning = false
             failedState.status = error.localizedDescription
+            failedState.scanFailure = WorkspaceScanFailure(kind: .scanFailed, message: error.localizedDescription)
+            failedRequest = ScanRequest(rootURL: rootURL, preferences: preferences)
             state = failedState
             return .failed
         }
@@ -120,6 +137,7 @@ final class WorkspaceStore: ObservableObject {
         acceptedState.status = nextSelectedIDs.isEmpty
             ? "Loaded \(files.count) files"
             : "Loaded \(files.count) files, \(nextSelectedIDs.count) selected"
+        acceptedState.scanFailure = nil
         activeRequestID = nil
         pendingRootURL = nil
         state = acceptedState
@@ -128,6 +146,11 @@ final class WorkspaceStore: ObservableObject {
             selectedCount: nextSelectedIDs.count,
             skippedCount: result.summary.skippedCount
         )
+    }
+
+    func retryFailedScan() async -> WorkspaceScanOutcome {
+        guard let failedRequest else { return .failed }
+        return await scan(rootURL: failedRequest.rootURL, preferences: failedRequest.preferences)
     }
 
     func toggle(node: FileNode, isOn: Bool) {
@@ -182,4 +205,9 @@ final class WorkspaceStore: ObservableObject {
         selectionState.selectedTokens = selection.tokens
         state = selectionState
     }
+}
+
+private struct ScanRequest: Sendable {
+    let rootURL: URL
+    let preferences: AppPreferences.Values
 }

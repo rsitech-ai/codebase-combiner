@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject private var controller: AppController
-    @State private var isSidebarPresented = true
 
     init(controller: AppController) {
         _controller = ObservedObject(wrappedValue: controller)
@@ -13,8 +12,14 @@ struct ContentView: View {
             let layout = AdaptiveWorkspaceLayout(
                 mode: WorkspaceLayoutPolicy.mode(for: Double(proxy.size.width))
             )
+            let frames = WorkspacePaneGeometry.frames(
+                totalWidth: Double(proxy.size.width),
+                layout: layout,
+                isSidebarPresented: controller.isSidebarPresented,
+                isInspectorPresented: controller.isInspectorPresented
+            )
 
-            workspace(layout: layout)
+            workspace(layout: layout, frames: frames)
         }
         .frame(minWidth: 960, minHeight: 640)
         .toolbar {
@@ -27,22 +32,23 @@ struct ContentView: View {
         }
     }
 
-    private func workspace(layout: AdaptiveWorkspaceLayout) -> some View {
+    private func workspace(layout: AdaptiveWorkspaceLayout, frames: WorkspacePaneFrames) -> some View {
         ZStack(alignment: .leading) {
-            ZStack(alignment: .trailing) {
-                PreparationWorkspace(controller: controller, layout: layout)
-                    .frame(minWidth: layout.preparationMinimumWidth)
+            PreparationWorkspace(controller: controller, layout: layout)
+                .padding(.leading, frames.preparation.x)
+                .padding(.trailing, max(0, frames.inspector.maxX - frames.preparation.maxX))
 
-                InspectorPaneHost(
-                    controller: controller,
-                    layout: layout,
-                    isPresented: controller.isInspectorPresented
-                )
-            }
+            InspectorPaneHost(
+                controller: controller,
+                layout: layout,
+                isPresented: controller.isInspectorPresented
+            )
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
             SidebarPaneHost(
                 controller: controller,
-                isPresented: isSidebarPresented
+                layout: layout,
+                isPresented: controller.isSidebarPresented
             )
         }
     }
@@ -87,9 +93,7 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var visibilityToolbar: some ToolbarContent {
         ToolbarItemGroup {
-            Button {
-                isSidebarPresented.toggle()
-            } label: {
+            Button(action: controller.toggleSidebar) {
                 Label("Toggle Workspace Sidebar", systemImage: "rectangle.leftthird.inset.filled")
             }
             .help("Show or hide the workspace sidebar")
@@ -123,18 +127,19 @@ struct ContentView: View {
 
 private struct SidebarPaneHost: View {
     @ObservedObject var controller: AppController
+    let layout: AdaptiveWorkspaceLayout
     let isPresented: Bool
 
     var body: some View {
         HStack(spacing: 0) {
             WorkspaceSidebar(controller: controller)
-                .frame(width: SidebarPanePresentation.width)
+                .frame(width: SidebarPanePresentation.width(layout: layout))
                 .background(Color(nsColor: .windowBackgroundColor))
 
             Divider()
         }
-        .frame(width: SidebarPanePresentation.width + 1)
-        .offset(x: SidebarPanePresentation.offset(isPresented: isPresented))
+        .frame(width: SidebarPanePresentation.width(layout: layout) + 1)
+        .offset(x: SidebarPanePresentation.offset(isPresented: isPresented, layout: layout))
         .opacity(isPresented ? 1 : 0)
         .allowsHitTesting(isPresented)
         .accessibilityHidden(!isPresented)
