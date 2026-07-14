@@ -27,10 +27,15 @@ struct TreeLoader {
         maxFileSizeKB: Int,
         skipHidden: Bool
     ) throws -> TreeLoadResult {
-        let resolvedRoot = rootURL.resolvingSymlinksInPath()
+        let standardizedRoot = rootURL.standardizedFileURL
         var summary = ScanSummary()
 
-        guard isDirectory(resolvedRoot) else {
+        let rootLinkValues = try standardizedRoot.resourceValues(forKeys: [.isSymbolicLinkKey])
+        guard rootLinkValues.isSymbolicLink != true else {
+            throw NSError(domain: "TreeLoader", code: 2, userInfo: [NSLocalizedDescriptionKey: "Symbolic-link workspace roots are not supported."])
+        }
+        let rootValues = try standardizedRoot.resourceValues(forKeys: [.isDirectoryKey])
+        guard rootValues.isDirectory == true else {
             throw NSError(domain: "TreeLoader", code: 0, userInfo: [NSLocalizedDescriptionKey: "Root must be a folder."])
         }
 
@@ -42,8 +47,21 @@ struct TreeLoader {
                 return nil
             }
 
-            if isDirectory(url) {
-                guard let childrenURLs = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey], options: [.skipsPackageDescendants]) else {
+            guard let linkValues = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]) else {
+                summary.record(.unreadable)
+                return nil
+            }
+            if linkValues.isSymbolicLink == true {
+                summary.record(.symbolicLink)
+                return nil
+            }
+            guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey]) else {
+                summary.record(.unreadable)
+                return nil
+            }
+
+            if values.isDirectory == true {
+                guard let childrenURLs = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsPackageDescendants]) else {
                     summary.record(.unreadable)
                     return nil
                 }
@@ -110,21 +128,16 @@ struct TreeLoader {
             }
         }
 
-        guard let node = walk(resolvedRoot, relativeTo: resolvedRoot) else {
+        guard let node = walk(standardizedRoot, relativeTo: standardizedRoot) else {
             throw NSError(domain: "TreeLoader", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to read folder contents."])
         }
         return TreeLoadResult(root: node, summary: summary)
     }
 
     private func relativePath(for url: URL, root: URL) -> String {
-        let resolvedURL = url.resolvingSymlinksInPath()
-        var path = resolvedURL.path.replacingOccurrences(of: root.path, with: "")
+        var path = url.standardizedFileURL.path.replacingOccurrences(of: root.path, with: "")
         if path.hasPrefix("/") { path.removeFirst() }
         return path.isEmpty ? url.lastPathComponent : path
-    }
-
-    private func isDirectory(_ url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
     }
 
     private func isBinary(data: Data) -> Bool {

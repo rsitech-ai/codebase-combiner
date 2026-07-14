@@ -3,6 +3,27 @@ import XCTest
 
 @MainActor
 final class AppCommandStateTests: XCTestCase {
+    func testSidebarCommandAndToolbarShareControllerVisibilityState() throws {
+        let defaultsName = "sidebar-command-state.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let controller = AppController(
+            preferences: AppPreferences(defaults: defaults),
+            workspace: WorkspaceStore(),
+            output: OutputStore(drafts: ControllerDraftStore(), clipboard: ControllerClipboard()),
+            folderPicker: { nil },
+            saveDestinationPicker: { _ in nil }
+        )
+
+        XCTAssertTrue(controller.isSidebarPresented)
+        XCTAssertEqual(controller.sidebarCommandTitle, "Hide Workspace Sidebar")
+
+        controller.toggleSidebar()
+
+        XCTAssertFalse(controller.isSidebarPresented)
+        XCTAssertEqual(controller.sidebarCommandTitle, "Show Workspace Sidebar")
+    }
+
     func testCommandsNameMissingPrerequisites() {
         let empty = AppCommandState(hasWorkspace: false, isScanning: false, hasSelection: false, hasFreshOutput: false)
         XCTAssertFalse(empty.canRefresh)
