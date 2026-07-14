@@ -189,6 +189,59 @@ final class OutputStoreTests: XCTestCase {
         XCTAssertFalse(store.status?.contains("private source") == true)
     }
 
+    func testFailedDraftPersistenceRetainsFullOutputAndRetryPersistsSameDraft() async throws {
+        let drafts = InMemoryDraftStore(saveError: .persistenceDenied)
+        let store = OutputStore(drafts: drafts, clipboard: RecordingClipboard())
+        await store.rebuild(
+            files: [.fixture(relativePath: "secret.txt", tokenCount: 2, sizeBytes: 10, content: "private source")],
+            rootPath: nil
+        )
+        let fullCurrentPayload = try XCTUnwrap(store.currentPayload)
+
+        XCTAssertTrue(store.canRetryPersistence)
+        await drafts.allowSaves()
+
+        await store.retryPersistence()
+
+        let persistedText = await drafts.currentDraft?.text
+        XCTAssertEqual(store.currentPayload, fullCurrentPayload)
+        XCTAssertEqual(store.recoveredDraft?.text, fullCurrentPayload)
+        XCTAssertEqual(persistedText, fullCurrentPayload)
+        XCTAssertFalse(store.canRetryPersistence)
+        XCTAssertEqual(store.status, "Saved recoverable output.")
+    }
+
+    func testPersistenceRetryCannotReplaceANewerBuild() async {
+        let drafts = RetryRaceDraftStore()
+        let store = OutputStore(drafts: drafts, clipboard: RecordingClipboard())
+        let file = FileNode.fixture(
+            relativePath: "source.swift",
+            tokenCount: 2,
+            sizeBytes: 10,
+            content: "private source"
+        )
+        store.promptPrefix = "older revision"
+        await store.rebuild(files: [file], rootPath: nil)
+        XCTAssertTrue(store.canRetryPersistence)
+
+        let retry = Task { await store.retryPersistence() }
+        await drafts.waitUntilRetryRequested()
+
+        store.promptPrefix = "newer revision"
+        let rebuild = Task { await store.rebuild(files: [file], rootPath: nil) }
+        await waitUntil { store.currentPayload?.contains("newer revision") == true }
+
+        await drafts.completeRetry()
+        await retry.value
+        await rebuild.value
+
+        let persisted = await drafts.currentDraft
+        XCTAssertTrue(store.currentPayload?.contains("newer revision") == true)
+        XCTAssertTrue(store.recoveredDraft?.text.contains("newer revision") == true)
+        XCTAssertTrue(persisted?.text.contains("newer revision") == true)
+        XCTAssertFalse(store.canRetryPersistence)
+    }
+
     func testConfirmWithoutARequestedConfirmationDoesNotClear() async {
         let drafts = InMemoryDraftStore(draft: .fixture())
         let store = OutputStore(drafts: drafts, clipboard: RecordingClipboard())
@@ -452,7 +505,7 @@ private actor InMemoryDraftStore: DraftPersisting {
     private var draft: ClipboardDraft?
     private(set) var clearCount = 0
     private var loadError: BoundaryError?
-    private let saveError: BoundaryError?
+    private var saveError: BoundaryError?
     private let clearError: BoundaryError?
 
     init(
@@ -493,6 +546,10 @@ private actor InMemoryDraftStore: DraftPersisting {
 
     func allowLoads() {
         loadError = nil
+    }
+
+    func allowSaves() {
+        saveError = nil
     }
 }
 
@@ -647,6 +704,44 @@ private actor ControlledDraftStore: DraftPersisting {
 
     var currentDraft: ClipboardDraft? {
         draft
+    }
+}
+
+private actor RetryRaceDraftStore: DraftPersisting {
+    private var saveCount = 0
+    private var retryWasRequested = false
+    private var retryContinuation: CheckedContinuation<Void, Never>?
+    private(set) var currentDraft: ClipboardDraft?
+
+    func load() async throws -> ClipboardDraft? { currentDraft }
+
+    func save(_ draft: ClipboardDraft) async throws {
+        saveCount += 1
+        if saveCount == 1 {
+            throw BoundaryError.persistenceDenied
+        }
+        if saveCount == 2 {
+            retryWasRequested = true
+            await withCheckedContinuation { continuation in
+                retryContinuation = continuation
+            }
+        }
+        currentDraft = draft
+    }
+
+    func clear() async throws {
+        currentDraft = nil
+    }
+
+    func waitUntilRetryRequested() async {
+        while !retryWasRequested {
+            await Task.yield()
+        }
+    }
+
+    func completeRetry() {
+        retryContinuation?.resume()
+        retryContinuation = nil
     }
 }
 

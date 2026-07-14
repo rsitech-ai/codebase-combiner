@@ -16,17 +16,14 @@ This repo ships two deliverables:
 - Flexible include/exclude filters by glob and extension.
 - Token estimation for prompt sizing.
 - Adaptive native macOS workspace with independently collapsible workspace and output panes, including a compact 960×640 path.
-- Structured scan summaries for hidden, excluded, disallowed, oversized, binary, and unreadable files without exposing skipped paths.
-- Full-payload preview, copy, and save workflows with explicit disabled-state help and shared menu shortcuts.
+- Structured scan summaries for hidden, excluded, disallowed, oversized, binary, symbolic-link, and unreadable files without exposing skipped paths or symbolic-link targets.
+- A shared 20,000-character current/recovered preview limit with an honest truncation notice; Copy, Copy Last, and Save continue to use the full payload.
 - Privacy-conscious “last ready output” recovery: metadata stays visible, content stays concealed until Reveal, and clearing requires confirmation.
+- Actionable recovery for failed workspace scans and recoverable-output persistence, including safe Retry and Choose Another Folder paths.
 - One native Settings scene for output format, filter visibility, hidden-file handling, extension filters, and validated file-size limits.
 - Typed local telemetry for lifecycle, scan, export, and recovery outcomes; logs contain counts and outcomes, not paths or payloads.
 - A macOS 13 semantic-material baseline with narrowly availability-gated macOS 26 presentation when the compiled SDK and runtime support it.
 - A neutral support link in the app menu and Settings for [Buy Me a Coffee](https://buymeacoffee.com/s1korrrr).
-
-## Preview
-
-![Codebase Combiner compact macOS workspace](docs/audit/codebase-combiner-e2e-2026-07-14/01-sandbox-compact-loaded.png)
 
 ## Getting started
 
@@ -62,7 +59,7 @@ Output options are configurable in VS Code settings under “Codebase Combiner�
 
 - Launch with `swift run CodebaseExplorerApp` from `SwiftExplorerApp/`.
 - Choose a folder, adjust filters, select files, then copy or save the combined prompt.
-- The app keeps the last ready combined payload in local Application Support storage. Relaunch shows only its metadata until you explicitly reveal the content; Copy Last works while it remains concealed.
+- The app keeps the last ready combined payload in local Application Support storage. Relaunch shows only its metadata until you explicitly reveal the content; revealed previews are bounded, while Copy Last still uses the full payload.
 - Use the standard macOS Settings command or the app menu for preferences and support.
 - Use the View menu or toolbar to show or hide the workspace sidebar, filters, and output inspector.
 

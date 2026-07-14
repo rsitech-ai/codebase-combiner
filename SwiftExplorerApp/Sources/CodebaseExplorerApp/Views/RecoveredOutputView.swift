@@ -64,7 +64,8 @@ struct RecoveredOutputView: View {
     }
 
     private func recoveredContent(_ draft: ClipboardDraft) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let preview = OutputPreviewPolicy.presentation(for: draft.text)
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Label("Saved Output", systemImage: "clock.arrow.circlepath")
@@ -91,8 +92,14 @@ struct RecoveredOutputView: View {
 
             if store.isRecoveredContentRevealed {
                 Divider()
+                if let notice = preview.notice {
+                    Label(notice, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ScrollView([.vertical, .horizontal]) {
-                    Text(draft.text)
+                    Text(preview.text)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -109,9 +116,16 @@ struct RecoveredOutputView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Saved output could not be read", systemImage: "exclamationmark.triangle")
                 .font(.headline)
-            Text("You can retry by relaunching, or clear only the unreadable app-owned recovery copy.")
+            Text("Retry loading, or clear only the unreadable app-owned recovery copy.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            Button {
+                Task { await store.loadRecoveredDraft() }
+            } label: {
+                Label("Retry Loading", systemImage: "arrow.clockwise")
+            }
+            .help("Retry loading the recoverable output")
+            .accessibilityHint("Retries reading only Codebase Combiner’s app-owned recovery copy")
             Button(role: .destructive, action: store.requestClearRecoveredOutput) {
                 Label("Clear Saved Output", systemImage: "trash")
             }
