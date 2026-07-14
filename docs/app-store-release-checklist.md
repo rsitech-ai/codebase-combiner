@@ -38,7 +38,7 @@ Statuses are deliberately limited to `verified`, `blocked`, and `not applicable`
 
 | Item                                           | Status   | Evidence                                                                                                                                                                  |
 | ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit and boundary tests pass                   | verified | Final holistic-fix run: `swift test` passed 98 tests and `npm test` passed 4 tests; the commands are recorded in the audit report.                                        |
+| Unit and boundary tests pass                   | verified | Final holistic-fix run: `swift test` passed 100 tests and `npm test` passed 4 tests; the commands are recorded in the audit report.                                       |
 | Format/lint checks pass                        | verified | SwiftFormat checked 45 files; ESLint and Prettier passed.                                                                                                                 |
 | Release build succeeds with warnings as errors | verified | `swift build -c release -Xswiftc -warnings-as-errors` passed with Xcode 26.6/SDK 26.5.                                                                                    |
 | Ad-hoc App Store-style bundle assembles        | verified | Bundle ID `com.s1korrrr.codebasecombiner`, version `0.1.0` (1), minimum macOS `13.0`; strict signature verifies.                                                          |
