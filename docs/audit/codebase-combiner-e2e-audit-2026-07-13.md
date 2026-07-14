@@ -8,7 +8,7 @@
 - Readiness label: **repository-ready: no, pending holistic re-review and refreshed signed interaction proof**. Local ad-hoc package gates are re-run separately and do not override this review gate.
 - Release boundary: this is not ready for App Store Connect upload. The local `.app` is ad-hoc signed; matching provisioning, distribution packaging, App Store Connect declarations, upload, and review remain separate owner-controlled gates.
 
-The earlier sandboxed baseline completed the primary workflow and found a macOS 27 beta AppKit constraint crash. A holistic review then found that the crash-safe overlay panes could cover preparation controls, sidebar visibility was not shared with commands, symbolic links could cross the scan boundary, recovered previews were unbounded, and two failure paths lacked direct retry controls. Those findings are corrected in code and covered by 98 tests, but the changed pane geometry still requires fresh signed loaded-workspace stress before repository readiness can return to yes.
+The earlier sandboxed baseline completed the primary workflow and found a macOS 27 beta AppKit constraint crash. A holistic review then found that the crash-safe overlay panes could cover preparation controls, sidebar visibility was not shared with commands, symbolic links could cross the scan boundary, recovered previews were unbounded, and two failure paths lacked direct retry controls. Those findings are corrected in code and covered by 100 tests, including invalid-request supersession of in-flight scans and retained retries, but the changed pane geometry still requires fresh signed loaded-workspace stress before repository readiness can return to yes.
 
 ### Holistic review correction status
 
@@ -117,7 +117,7 @@ The first UI-ready polling timer is intentionally excluded: it waited 85.987 sec
 | Check                 | Command                                                                                                                     | Result                                                     |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Swift formatting      | `cd SwiftExplorerApp && swiftformat --lint .`                                                                               | 45 files checked; 0 require formatting                     |
-| Swift tests           | `cd SwiftExplorerApp && swift test`                                                                                         | 98 tests; 0 failures                                       |
+| Swift tests           | `cd SwiftExplorerApp && swift test`                                                                                         | 100 tests; 0 failures                                      |
 | Release warnings      | `cd SwiftExplorerApp && swift build -c release -Xswiftc -warnings-as-errors`                                                | Passed                                                     |
 | Node behavior         | `npm test`                                                                                                                  | 4 tests; 0 failures                                        |
 | Node lint             | `npm run lint`                                                                                                              | Passed                                                     |
