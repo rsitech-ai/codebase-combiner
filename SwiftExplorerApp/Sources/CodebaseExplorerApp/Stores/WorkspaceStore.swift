@@ -77,20 +77,27 @@ final class WorkspaceStore: ObservableObject {
 
     @discardableResult
     func scan(rootURL: URL, preferences: AppPreferences.Values) async -> WorkspaceScanOutcome {
+        let requestID = UUID()
+        activeRequestID = requestID
+        pendingRootURL = nil
+        failedRequest = nil
+
         guard AppPreferences.validate(maxFileSizeKB: preferences.maxFileSizeKB) == .valid else {
-            state.status = "Correct the maximum file size before scanning."
+            activeRequestID = nil
+            var rejectedState = state
+            rejectedState.isScanning = false
+            rejectedState.status = "Correct the maximum file size before scanning."
+            rejectedState.scanFailure = nil
+            state = rejectedState
             return .rejectedInvalidMaximumFileSize
         }
 
-        let requestID = UUID()
         let preserveSelection = self.rootURL == rootURL
-        activeRequestID = requestID
         pendingRootURL = rootURL
         var scanningState = state
         scanningState.isScanning = true
         scanningState.status = "Scanning…"
         scanningState.scanFailure = nil
-        failedRequest = nil
         state = scanningState
 
         do {
