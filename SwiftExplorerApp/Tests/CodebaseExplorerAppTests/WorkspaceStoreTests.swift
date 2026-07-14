@@ -133,6 +133,80 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(outcome, .rejectedInvalidMaximumFileSize)
     }
 
+    func testInvalidRequestSupersedesInFlightScanAndPreservesAcceptedWorkspace() async {
+        let loader = ControlledWorkspaceLoader()
+        let store = WorkspaceStore(loader: loader)
+        let acceptedRoot = URL(fileURLWithPath: "/accepted")
+        let inFlightRoot = URL(fileURLWithPath: "/in-flight")
+        let invalidRoot = URL(fileURLWithPath: "/invalid")
+
+        let acceptedScan = Task { await store.scan(rootURL: acceptedRoot, preferences: .init()) }
+        await loader.waitUntilRequested(acceptedRoot)
+        await loader.succeed(
+            acceptedRoot,
+            with: .fileFixture(rootURL: acceptedRoot, names: ["accepted.swift"])
+        )
+        _ = await acceptedScan.value
+        let acceptedState = store.state
+
+        let inFlightScan = Task { await store.scan(rootURL: inFlightRoot, preferences: .init()) }
+        await loader.waitUntilRequested(inFlightRoot)
+
+        let invalidOutcome = await store.scan(
+            rootURL: invalidRoot,
+            preferences: AppPreferences.Values(maxFileSizeKB: 31)
+        )
+
+        XCTAssertEqual(invalidOutcome, .rejectedInvalidMaximumFileSize)
+        XCTAssertNil(store.activeRequestID)
+        XCTAssertFalse(store.isScanning)
+        XCTAssertEqual(store.status, "Correct the maximum file size before scanning.")
+        XCTAssertEqual(store.rootURL, acceptedState.rootURL)
+        XCTAssertEqual(store.rootNode, acceptedState.rootNode)
+        XCTAssertEqual(store.selectedIDs, acceptedState.selectedIDs)
+
+        await loader.succeed(
+            inFlightRoot,
+            with: .fileFixture(rootURL: inFlightRoot, names: ["stale.swift"])
+        )
+        let inFlightOutcome = await inFlightScan.value
+
+        XCTAssertEqual(inFlightOutcome, .stale)
+        XCTAssertNil(store.activeRequestID)
+        XCTAssertEqual(store.status, "Correct the maximum file size before scanning.")
+        XCTAssertEqual(store.rootURL, acceptedState.rootURL)
+        XCTAssertEqual(store.rootNode, acceptedState.rootNode)
+        XCTAssertEqual(store.selectedIDs, acceptedState.selectedIDs)
+    }
+
+    func testInvalidRequestClearsRetainedFailedScanRetry() async {
+        let rootURL = URL(fileURLWithPath: "/retry-workspace")
+        let loader = RetryWorkspaceLoader(
+            result: .fileFixture(rootURL: rootURL, names: ["Recovered.swift"])
+        )
+        let store = WorkspaceStore(loader: loader)
+        _ = await store.scan(rootURL: rootURL, preferences: .init())
+        XCTAssertTrue(store.canRetryFailedScan)
+        XCTAssertNotNil(store.scanFailure)
+
+        let invalidOutcome = await store.scan(
+            rootURL: rootURL,
+            preferences: AppPreferences.Values(maxFileSizeKB: 31)
+        )
+
+        XCTAssertEqual(invalidOutcome, .rejectedInvalidMaximumFileSize)
+        XCTAssertNil(store.activeRequestID)
+        XCTAssertFalse(store.canRetryFailedScan)
+        XCTAssertNil(store.scanFailure)
+        XCTAssertFalse(store.isScanning)
+        XCTAssertEqual(store.status, "Correct the maximum file size before scanning.")
+
+        let retryOutcome = await store.retryFailedScan()
+        let attemptCount = await loader.attemptCount
+        XCTAssertEqual(retryOutcome, .failed)
+        XCTAssertEqual(attemptCount, 1)
+    }
+
     func testFirstAcceptedScanSelectsAllAvailableFilesAndUpdatesTotals() async {
         let result = TreeLoadResult.twoFileFixture
         let store = WorkspaceStore(loader: ImmediateWorkspaceLoader(result: result))
