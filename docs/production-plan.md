@@ -17,10 +17,10 @@
 
 - Scene model: one `WindowGroup` for the workspace plus one canonical `Settings` scene.
 - Window roles: primary workspace window and standard Settings window.
-- Layout model: adaptive workspace sidebar, preparation surface, and output inspector. The two outer pane hosts stay structurally mounted and use transform/opacity for visibility because changing AppKit-backed split/toolbar structure crashed the audited macOS 27 beta host.
-- State ownership: `AppController` coordinates `AppPreferences`, `WorkspaceStore`, and `OutputStore`; views retain only presentation state such as sidebar visibility.
+- Layout model: adaptive workspace sidebar, preparation surface, and output inspector. The two outer pane hosts stay structurally mounted and use transform/opacity for visibility because changing AppKit-backed split/toolbar structure crashed the audited macOS 27 beta host. Pure pane geometry reserves a non-overlapping preparation region for every visible combination.
+- State ownership: `AppController` coordinates `AppPreferences`, `WorkspaceStore`, `OutputStore`, and shared sidebar/inspector visibility; views retain only local presentation details.
 - Persistence: preferences in UserDefaults; the last ready combined payload remains an atomic JSON draft under Application Support with its existing schema.
-- Services: `TreeLoader`, `TokenEstimator`, `CombinedOutputBuilder`, `ClipboardDraftStore`, injected clipboard/save boundaries, and typed metadata-only telemetry.
+- Services: `TreeLoader`, `TokenEstimator`, shared prompt/preview policies, `CombinedOutputBuilder`, `ClipboardDraftStore`, injected clipboard/save boundaries, and typed metadata-only telemetry. `TreeLoader` rejects symbolic links before target metadata or content access.
 - App Intents / Foundation Models / advanced capabilities: not used in v1.
 - Folder/module structure: `App/`, `Models/`, `Stores/`, `Services/`, `Support/`, `Views/`, and focused XCTest targets.
 
@@ -39,7 +39,7 @@
 - Visual style: semantic macOS 13 baseline; one bounded `FunctionalChrome` modifier uses macOS 26 glass only when available and falls back to opaque/regular materials for reduced transparency or increased contrast.
 - Motion rules: repeated workflow actions remain immediate; pane transitions are non-structural and Reduce Motion-safe.
 - Accessibility requirements: named controls, prerequisite help for disabled actions, keyboard/menu parity, safe Cancel focus for destructive recovery clear, and accessibility-hidden collapsed panes.
-- Empty/loading/error/offline/permission states: empty, loading, invalid settings, partial scan, scan failure, persistence failure, copy/save failure, and recovery failure are explicit; offline is normal operation.
+- Empty/loading/error/offline/permission states: empty, loading, invalid settings, partial scan, typed scan failure with Retry/Choose Another Folder, persistence failure with same-draft retry, copy/save failure, and recovery failure are explicit; offline is normal operation.
 
 ## Test Strategy
 
@@ -70,10 +70,10 @@
 
 ## Iteration Log
 
-| Date       | Gate                | Change                                                                                                       | Verification                                                                            | Next blocker                                    |
-| ---------- | ------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| 2026-06-29 | Production quality  | Added file-backed last-ready-payload persistence and restore/copy UI.                                        | `swift test` passed 8 tests; `npm test`; `npm run lint`; `npm run format:check`.        | App Store signing assets.                       |
-| 2026-06-29 | Build/run           | Added `script/build_and_run.sh --verify` and Codex Run action.                                               | `./script/build_and_run.sh --verify` launched packaged app.                             | None for local smoke.                           |
-| 2026-07-14 | Native architecture | Extracted focused stores/controller and rebuilt the adaptive workspace with concealed recovery.              | 86 XCTest cases, Release warnings-as-errors build, and real sandbox interaction matrix. | Owner-controlled App Store gates.               |
-| 2026-07-14 | Package evidence    | Validated macOS 13.0 minimum, SDK 26.5, privacy manifest, strict ad-hoc signature, and minimal entitlements. | `build_app_store_package.sh --skip-signing`, `plutil`, `codesign`, and `vtool`.         | Matching profile and signed installer package.  |
-| 2026-07-14 | Extension package   | Corrected the VS Code publisher identifier and excluded non-extension artifacts.                             | `npm run package`: 73 files, 153.18 KB.                                                 | Marketplace ownership/publish remains external. |
+| Date       | Gate                | Change                                                                                                       | Verification                                                                                        | Next blocker                                    |
+| ---------- | ------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 2026-06-29 | Production quality  | Added file-backed last-ready-payload persistence and restore/copy UI.                                        | `swift test` passed 8 tests; `npm test`; `npm run lint`; `npm run format:check`.                    | App Store signing assets.                       |
+| 2026-06-29 | Build/run           | Added `script/build_and_run.sh --verify` and Codex Run action.                                               | `./script/build_and_run.sh --verify` launched packaged app.                                         | None for local smoke.                           |
+| 2026-07-14 | Native architecture | Extracted focused stores/controller and rebuilt the adaptive workspace with concealed recovery.              | Historical sandbox matrix plus 98 current XCTest cases; changed pane runtime proof remains pending. | Holistic re-review and signed pane stress.      |
+| 2026-07-14 | Package evidence    | Validated macOS 13.0 minimum, SDK 26.5, privacy manifest, strict ad-hoc signature, and minimal entitlements. | `build_app_store_package.sh --skip-signing`, `plutil`, `codesign`, and `vtool`.                     | Matching profile and signed installer package.  |
+| 2026-07-14 | Extension package   | Corrected the VS Code publisher identifier and excluded non-extension artifacts.                             | `npm run package`: 73 files, 153.18 KB.                                                             | Marketplace ownership/publish remains external. |

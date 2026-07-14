@@ -78,10 +78,7 @@ struct BackgroundOutputBuilder: OutputBuilding {
                 files: input.files,
                 format: input.format
             )
-            let trimmedPrefix = input.promptPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
-            let promptTokens = trimmedPrefix.isEmpty
-                ? 0
-                : TokenEstimator().estimateTokens(in: trimmedPrefix)
+            let promptTokens = PromptTokenPolicy.estimate(in: input.promptPrefix)
             let draft = ClipboardDraft(
                 text: payload,
                 format: input.format,

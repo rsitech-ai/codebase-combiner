@@ -38,12 +38,12 @@ Statuses are deliberately limited to `verified`, `blocked`, and `not applicable`
 
 | Item                                           | Status   | Evidence                                                                                                                                                                  |
 | ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit and boundary tests pass                   | verified | `swift test`: 86 tests, 0 failures; `npm test`: 4 tests, 0 failures.                                                                                                      |
-| Format/lint checks pass                        | verified | SwiftFormat checked 43 files; ESLint and Prettier passed.                                                                                                                 |
+| Unit and boundary tests pass                   | verified | Final holistic-fix run: `swift test` passed 98 tests and `npm test` passed 4 tests; the commands are recorded in the audit report.                                        |
+| Format/lint checks pass                        | verified | SwiftFormat checked 45 files; ESLint and Prettier passed.                                                                                                                 |
 | Release build succeeds with warnings as errors | verified | `swift build -c release -Xswiftc -warnings-as-errors` passed with Xcode 26.6/SDK 26.5.                                                                                    |
 | Ad-hoc App Store-style bundle assembles        | verified | Bundle ID `com.s1korrrr.codebasecombiner`, version `0.1.0` (1), minimum macOS `13.0`; strict signature verifies.                                                          |
 | Clean launch of packaged artifact              | verified | `./script/build_and_run.sh --verify` launched, rechecked, terminated, and reaped exact PID `76936`; stdout/stderr were empty.                                             |
-| Primary workflow interaction sweep             | verified | Signed sandbox matrix covers open, partial scan, filters, selection, prompt, format, copy, save, recovery, menus, Settings, pane stress, relaunch, and cleanup.           |
+| Primary workflow interaction sweep             | blocked  | Historical matrix passed, but changed pane geometry still needs a fresh loaded-workspace exact-PID stress after macOS permission prompts blocked UI automation.           |
 | Destructive recovery clear through UI          | blocked  | Cancel was verified; final destructive Computer Use action was not authorized. Store-level confirmed-clear and retry tests pass.                                          |
 | Accessibility and appearance variants          | blocked  | Labels/help/dark appearance are verified; VoiceOver plus light, Reduce Motion, increased contrast, larger text, and reduced-transparency system variants were not forced. |
 | macOS 13 runtime smoke                         | blocked  | The binary and plist declare 13.0, but this audit ran on macOS 27; a macOS 13 machine/VM was not available.                                                               |
@@ -65,7 +65,7 @@ Statuses are deliberately limited to `verified`, `blocked`, and `not applicable`
 
 ## Release Decision
 
-- Repository-ready: **yes**, subject to the checked-in branch and fresh gates listed in the audit report.
+- Repository-ready: **no**, pending holistic re-review and refreshed signed loaded-workspace pane/screenshots evidence.
 - Package-ready: **yes for local ad-hoc validation only**; the `.app` has a strict-valid ad-hoc signature, macOS 13 minimum, privacy manifest, and minimal sandbox entitlements.
 - Ready for App Store Connect upload: **no**.
 - External blockers: matching provisioning profile, verified team/app record, distribution-signed app and installer package, metadata, screenshots, privacy/legal declarations, upload, and Apple review.
