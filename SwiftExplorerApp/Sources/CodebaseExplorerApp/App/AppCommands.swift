@@ -30,6 +30,10 @@ struct AppCommands: Commands {
 
         CommandGroup(after: .sidebar) {
             Button(
+                controller.sidebarCommandTitle,
+                action: controller.toggleSidebar
+            )
+            Button(
                 controller.preferences.values.showFilters ? "Hide Filters" : "Show Filters",
                 action: controller.toggleFilters
             )

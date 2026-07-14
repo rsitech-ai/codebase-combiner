@@ -56,6 +56,10 @@ struct WorkspaceSidebar: View {
             if workspace.summary.skippedCount > 0 {
                 scanSummary
             }
+
+            if let failure = workspace.scanFailure {
+                scanFailure(failure)
+            }
         }
         .padding(12)
     }
@@ -89,6 +93,37 @@ struct WorkspaceSidebar: View {
         }
         .help("Show skipped-file counts by reason. File paths are not shown.")
         .accessibilityHint("Shows skipped-file counts by reason without revealing file paths")
+    }
+
+    private func scanFailure(_ failure: WorkspaceScanFailure) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Workspace scan failed", systemImage: "exclamationmark.triangle")
+                .font(.caption.weight(.semibold))
+            Text(failure.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 6) {
+                Button(action: controller.retryFailedScan) {
+                    Label("Retry Scan", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .disabled(!workspace.canRetryFailedScan)
+                .help(workspace.canRetryFailedScan ? "Retry the failed workspace scan" : "Wait for the current scan to finish")
+                .accessibilityHint("Retries the failed scan with the same folder and validated filters")
+
+                Button(action: controller.chooseFolder) {
+                    Label("Choose Another Folder", systemImage: "folder.badge.plus")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .help("Choose a different workspace folder")
+                .accessibilityHint("Opens a folder picker without changing source files")
+            }
+            .controlSize(.small)
+        }
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -155,6 +190,8 @@ private extension ScanSkipReason {
             "Too large"
         case .binary:
             "Binary"
+        case .symbolicLink:
+            "Symbolic links"
         case .unreadable:
             "Unreadable"
         }

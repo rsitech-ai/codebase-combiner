@@ -18,8 +18,6 @@ struct OutputInspector: View {
     @ObservedObject private var output: OutputStore
 
     private let layout: AdaptiveWorkspaceLayout
-    private let previewCharacterLimit = 20000
-
     init(controller: AppController, layout: AdaptiveWorkspaceLayout) {
         _controller = ObservedObject(wrappedValue: controller)
         _workspace = ObservedObject(wrappedValue: controller.workspace)
@@ -82,29 +80,44 @@ struct OutputInspector: View {
     }
 
     private func currentOutput(_ payload: String) -> some View {
-        VStack(spacing: 0) {
+        let preview = OutputPreviewPolicy.presentation(for: payload)
+        return VStack(spacing: 0) {
             currentActions
                 .controlSize(.small)
                 .functionalChrome()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            if payload.count > previewCharacterLimit {
-                Label(
-                    "Preview shows the first \(previewCharacterLimit.formatted()) characters. Copy and Save use the full output.",
-                    systemImage: "info.circle"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if output.canRetryPersistence {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("The recoverable copy could not be saved. Your full current output is still available.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(action: controller.retryPersistence) {
+                        Label("Retry Saving Recovery", systemImage: "arrow.clockwise")
+                    }
+                    .controlSize(.small)
+                    .help("Retry saving the recoverable copy without changing the current output")
+                    .accessibilityHint("Retries persistence of the same full current output")
+                }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
-                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let notice = preview.notice {
+                Label(notice, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
 
             ScrollView([.vertical, .horizontal]) {
-                Text(previewText(payload))
+                Text(preview.text)
                     .font(.system(.caption, design: .monospaced))
                     .lineSpacing(2)
                     .textSelection(.enabled)
@@ -126,11 +139,6 @@ struct OutputInspector: View {
             return "Saved \(draft.fileCount) files • content concealed"
         }
         return "No current selection"
-    }
-
-    private func previewText(_ payload: String) -> String {
-        guard payload.count > previewCharacterLimit else { return payload }
-        return String(payload.prefix(previewCharacterLimit))
     }
 
     @ViewBuilder

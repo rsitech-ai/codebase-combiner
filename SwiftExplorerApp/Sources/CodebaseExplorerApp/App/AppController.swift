@@ -71,6 +71,7 @@ final class AppController: ObservableObject {
     let workspace: WorkspaceStore
     let output: OutputStore
 
+    @Published var isSidebarPresented = true
     @Published var isInspectorPresented = true
     @Published private(set) var displayStatus: String
 
@@ -82,6 +83,7 @@ final class AppController: ObservableObject {
     private var saveTask: Task<Void, Never>?
     private var rebuildTask: Task<Void, Never>?
     private var preferenceRescanTask: Task<Void, Never>?
+    private var persistenceRetryTask: Task<Void, Never>?
     private var hasStarted = false
 
     var commandState: AppCommandState {
@@ -92,6 +94,10 @@ final class AppController: ObservableObject {
             hasFreshOutput: output.hasFreshCurrentPayload,
             hasRecoveredOutput: output.recoveredDraft != nil
         )
+    }
+
+    var sidebarCommandTitle: String {
+        isSidebarPresented ? "Hide Workspace Sidebar" : "Show Workspace Sidebar"
     }
 
     static func live(dependencies: AppDependencies = AppDependencies()) -> AppController {
@@ -146,6 +152,17 @@ final class AppController: ObservableObject {
         beginScan(rootURL: rootURL)
     }
 
+    func retryFailedScan() {
+        guard workspace.canRetryFailedScan else { return }
+        scanTask?.cancel()
+        scanTask = Task { [weak self] in
+            guard let self else { return }
+            telemetry.record(.scanStarted)
+            let outcome = await workspace.retryFailedScan()
+            telemetry.record(.scanFinished(outcome))
+        }
+    }
+
     func copy() {
         guard commandState.canExport else { return }
         output.copyCurrent()
@@ -168,8 +185,21 @@ final class AppController: ObservableObject {
         }
     }
 
+    func retryPersistence() {
+        guard output.canRetryPersistence else { return }
+        persistenceRetryTask?.cancel()
+        persistenceRetryTask = Task { [weak self] in
+            guard let self else { return }
+            await output.retryPersistence()
+        }
+    }
+
     func toggleFilters() {
         preferences.values.showFilters.toggle()
+    }
+
+    func toggleSidebar() {
+        isSidebarPresented.toggle()
     }
 
     func toggleInspector() {

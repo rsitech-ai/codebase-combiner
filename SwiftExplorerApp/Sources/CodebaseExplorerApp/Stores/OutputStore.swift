@@ -11,6 +11,7 @@ final class OutputStore: ObservableObject {
     @Published private(set) var recoveredDraft: ClipboardDraft?
     @Published private(set) var isRecoveredContentRevealed = false
     @Published private(set) var canClearRecoveredOutput = false
+    @Published private(set) var canRetryPersistence = false
     @Published private(set) var isClearConfirmationPresented = false
     @Published private(set) var status: String?
 
@@ -21,6 +22,7 @@ final class OutputStore: ObservableObject {
     private let telemetry: any AppTelemetryRecording
     private var buildGeneration = 0
     private var recoveryGeneration = 0
+    private var pendingPersistenceDraft: ClipboardDraft?
 
     init(
         drafts: any DraftPersisting,
@@ -54,7 +56,7 @@ final class OutputStore: ObservableObject {
     }
 
     func rebuild(files: [FileNode], rootPath: String?) async {
-        let buildRevision = beginBuildOperation()
+        let buildRevision = beginBuildOperation(invalidateRecovery: !files.isEmpty)
         isClearConfirmationPresented = false
         isBuilding = true
         currentPayload = nil
@@ -82,6 +84,8 @@ final class OutputStore: ObservableObject {
             try await persistence.save(output.draft)
             guard isCurrentRecovery(recoveryRevision) else { return }
             recoveredDraft = output.draft
+            pendingPersistenceDraft = nil
+            canRetryPersistence = false
             isRecoveredContentRevealed = false
             canClearRecoveredOutput = true
             status = "Saved recoverable output."
@@ -90,6 +94,32 @@ final class OutputStore: ObservableObject {
             )
         } catch {
             guard isCurrentRecovery(recoveryRevision) else { return }
+            pendingPersistenceDraft = output.draft
+            canRetryPersistence = true
+            status = "Could not save the recoverable output. Check storage access and try again: \(error.localizedDescription)"
+            telemetry.record(.recoverySaveFailed)
+        }
+    }
+
+    func retryPersistence() async {
+        guard let draft = pendingPersistenceDraft else { return }
+        let recoveryRevision = beginRecoveryOperation(cancelPendingBuild: false)
+        canRetryPersistence = false
+
+        do {
+            try await persistence.save(draft)
+            guard isCurrentRecovery(recoveryRevision) else { return }
+            recoveredDraft = draft
+            isRecoveredContentRevealed = false
+            canClearRecoveredOutput = true
+            pendingPersistenceDraft = nil
+            canRetryPersistence = false
+            status = "Saved recoverable output."
+            telemetry.record(.recoverySaveSucceeded(fileCount: draft.fileCount, byteCount: draft.byteCount))
+        } catch {
+            guard isCurrentRecovery(recoveryRevision) else { return }
+            pendingPersistenceDraft = draft
+            canRetryPersistence = true
             status = "Could not save the recoverable output. Check storage access and try again: \(error.localizedDescription)"
             telemetry.record(.recoverySaveFailed)
         }
@@ -206,8 +236,13 @@ final class OutputStore: ObservableObject {
         }
     }
 
-    private func beginBuildOperation() -> Int {
+    private func beginBuildOperation(invalidateRecovery: Bool = false) -> Int {
         buildGeneration &+= 1
+        if invalidateRecovery {
+            recoveryGeneration &+= 1
+            pendingPersistenceDraft = nil
+            canRetryPersistence = false
+        }
         return buildGeneration
     }
 

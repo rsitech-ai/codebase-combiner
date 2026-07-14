@@ -9,8 +9,6 @@ struct PreparationWorkspace: View {
 
     let layout: AdaptiveWorkspaceLayout
 
-    private let estimator = TokenEstimator()
-
     init(controller: AppController, layout: AdaptiveWorkspaceLayout) {
         _controller = ObservedObject(wrappedValue: controller)
         _preferences = ObservedObject(wrappedValue: controller.preferences)
@@ -29,7 +27,7 @@ struct PreparationWorkspace: View {
                     workspaceControls
                     PromptEditor(
                         prompt: promptBinding,
-                        tokenCount: estimator.estimateTokens(in: output.promptPrefix)
+                        tokenCount: PromptTokenPolicy.estimate(in: output.promptPrefix)
                     )
 
                     if preferences.values.showFilters {
@@ -47,7 +45,7 @@ struct PreparationWorkspace: View {
                     StatsBar(
                         totalFiles: workspace.allFiles.count,
                         selectedFiles: workspace.selectedFiles.count,
-                        tokenCount: workspace.selectedTokens + estimator.estimateTokens(in: output.promptPrefix),
+                        tokenCount: workspace.selectedTokens + PromptTokenPolicy.estimate(in: output.promptPrefix),
                         bytes: workspace.selectedBytes
                     )
                 }

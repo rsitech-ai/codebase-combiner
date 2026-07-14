@@ -4,6 +4,7 @@ enum ScanSkipReason: String, CaseIterable, Sendable {
     case disallowed
     case oversized
     case binary
+    case symbolicLink
     case unreadable
 }
 
