@@ -108,6 +108,91 @@ describe('combiner helpers', () => {
     expect(result.skippedByWorkspaceLimit).to.equal(1);
   });
 
+  it('honors cancellation between files in a flat directory', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-cancel-'));
+    await fs.writeFile(path.join(root, 'a.txt'), 'a');
+    await fs.writeFile(path.join(root, 'b.txt'), 'b');
+    const controller = new AbortController();
+    const originalStat = require('fs').promises.stat;
+    let statCount = 0;
+    require('fs').promises.stat = async (...args) => {
+      const value = await originalStat(...args);
+      statCount += 1;
+      if (statCount === 1) controller.abort();
+      return value;
+    };
+
+    try {
+      let cancellationError;
+      try {
+        await collectFiles(
+          root,
+          buildMatchers(['**/*']),
+          [],
+          buildExtensionSet(['txt']),
+          new Set(),
+          512,
+          path.join(root, 'combined.txt'),
+          {
+            maxFiles: 10,
+            maxBytes: 1024,
+            maxDepth: 8,
+            maxVisitedEntries: 10,
+            signal: controller.signal,
+          }
+        );
+      } catch (error) {
+        cancellationError = error;
+      }
+      expect(cancellationError?.message).to.equal('Combination cancelled.');
+      expect(statCount).to.equal(1);
+    } finally {
+      require('fs').promises.stat = originalStat;
+    }
+  });
+
+  it('fails closed when filtered traversal exceeds its bound', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-visits-'));
+    await fs.writeFile(path.join(root, 'b.txt'), 'b');
+    await fs.writeFile(path.join(root, 'a.txt'), 'a');
+    await fs.writeFile(path.join(root, 'c.log'), 'c');
+
+    let traversalError;
+    try {
+      await collectFiles(
+        root,
+        buildMatchers(['**/*']),
+        [],
+        buildExtensionSet(['txt']),
+        new Set(),
+        512,
+        path.join(root, 'combined.txt'),
+        { maxFiles: 1, maxBytes: 1024, maxDepth: 8, maxVisitedEntries: 2 }
+      );
+    } catch (error) {
+      traversalError = error;
+    }
+    expect(traversalError?.name).to.equal('WorkspaceLimitError');
+  });
+
+  it('selects the accepted subset deterministically', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-order-'));
+    await fs.writeFile(path.join(root, 'b.txt'), 'b');
+    await fs.writeFile(path.join(root, 'a.txt'), 'a');
+
+    const result = await collectFiles(
+      root,
+      buildMatchers(['**/*']),
+      [],
+      buildExtensionSet(['txt']),
+      new Set(),
+      512,
+      path.join(root, 'combined.txt'),
+      { maxFiles: 1, maxBytes: 1024, maxDepth: 8, maxVisitedEntries: 10 }
+    );
+    expect(result.map((file) => file.relativePath)).to.deep.equal(['a.txt']);
+  });
+
   it('detects binary buffers', () => {
     expect(isBinaryBuffer(Buffer.from('plain text'))).to.equal(false);
     expect(isBinaryBuffer(Buffer.from([0x00, 0x61]))).to.equal(true);

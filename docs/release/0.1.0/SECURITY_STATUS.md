@@ -11,9 +11,9 @@ The scan correctly classified several self-only reliability/release-safety issue
 - release metadata is allowlisted before path derivation or deletion;
 - provisioning profiles must pass the protected-object signer trust policy;
 - app and installer signing certificates must share the Team ID;
-- macOS and VSIX scans have aggregate file, byte, and depth bounds;
+- macOS and VSIX scans have aggregate file, byte, depth, and 50,000-visited-entry bounds; traversal fails closed when exceeded;
 - VSIX traversal is cancellable;
-- recovered drafts are size-bounded;
+- recovered drafts use binary property lists, retain legacy JSON read support, and are size-bounded;
 - file saves are structured, serialized, and cancellation-aware.
 
 Supply-chain evidence: `npm audit` reports zero vulnerabilities; the VSIX packages only the runtime `minimatch` dependency family; SwiftPM declares no third-party package dependency; SwiftFormat 0.61.1 is version- and SHA-256-pinned in CI.
