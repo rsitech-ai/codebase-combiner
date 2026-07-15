@@ -161,14 +161,18 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "minimatch": "^9.0.5"
+    "minimatch": "^9.0.9"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^3.9.2",
     "chai": "^4.4.1",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
-    "mocha": "^10.4.0",
+    "mocha": "^11.7.6",
     "prettier": "^3.3.3"
+  },
+  "overrides": {
+    "diff": "8.0.3",
+    "serialize-javascript": "7.0.7"
   }
 }
