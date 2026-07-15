@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 24
           cache: npm
 
       - name: Install JS dependencies
@@ -31,6 +31,12 @@ jobs:
 
       - name: JS tests
         run: npm test
+
+      - name: Audit JS dependencies
+        run: npm audit
+
+      - name: Package VS Code extension
+        run: npm run package
 
       - name: Install SwiftFormat
         run: |
@@ -50,3 +56,18 @@ jobs:
 
       - name: Swift tests
         run: cd SwiftExplorerApp && swift test
+
+      - name: Swift Release build with warnings as errors
+        run: cd SwiftExplorerApp && swift build -c release -Xswiftc -warnings-as-errors
+
+      - name: Shell contracts
+        run: |
+          bash -n Packaging/AppStore/build_app_store_package.sh
+          bash script/tests/build_and_run_contract_test.sh
+
+      - name: App Store bundle validation
+        run: |
+          plutil -lint Packaging/AppStore/AppStore.entitlements
+          plutil -lint Packaging/AppStore/Info.plist.in
+          plutil -lint Packaging/AppStore/PrivacyInfo.xcprivacy
+          Packaging/AppStore/build_app_store_package.sh --skip-signing
