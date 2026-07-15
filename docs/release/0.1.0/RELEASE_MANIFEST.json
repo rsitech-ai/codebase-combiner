@@ -20,12 +20,12 @@
   "artifacts": [
     {
       "path": "codebase-combiner-0.0.1.vsix",
-      "sha256": "e2978c3045bdd049524ff4b6bb0b3a7fa0fb7981e0d7e2f9daf682f5e405d721",
+      "sha256": "5557a9a6f2a22189ce24df1e947ecdd032b6801738ae7889974033fc5d7937f2",
       "committed": false
     },
     {
       "path": "dist/app-store/Codebase Combiner.app/Contents/MacOS/CodebaseExplorerApp",
-      "sha256": "a5f13fc57a8efaeac405b6857f027c3ea94085684770a0ad1209c1acbe640076",
+      "sha256": "bdcf2d63506151ef97c82025972325e41390fbe996ecc814ad1c6ce32da48cbe",
       "signing": "ad-hoc",
       "committed": false
     },
@@ -46,7 +46,7 @@
     },
     {
       "path": "dist/app-store/symbols/0.1.0-1-arm64/manifest.txt",
-      "sha256": "18b3f03c34adeafb1eb0473afe3bb1b8d03708f1fb928d1ae044ccde12cccf4e",
+      "sha256": "20fb4b29d0e80fee2de0f333c7637d300f8f3199945a99b524dc380fbda71b6b",
       "committed": false
     }
   ],

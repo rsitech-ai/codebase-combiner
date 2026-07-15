@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the SwiftPM app and existing deterministic packaging script. Treat source verification, runtime proof, signed distribution packaging, metadata/attestations, and App Store Connect mutations as separate gates. Store non-sensitive evidence under `docs/release/0.1.0/`; keep generated bundles, packages, logs, profiles, credentials, and archives out of Git.
 
-**Tech Stack:** Swift 6, SwiftUI for macOS 13+, SwiftPM, XCTest, SwiftFormat 0.61.1, Node 18, Mocha/Chai, ESLint, Prettier, shell packaging, native Apple signing tools.
+**Tech Stack:** Swift 6, SwiftUI for macOS 13+, SwiftPM, XCTest, SwiftFormat 0.61.1, Node 24, Mocha/Chai, ESLint, Prettier, shell packaging, native Apple signing tools.
 
 ## Global Constraints
 

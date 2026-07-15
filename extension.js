@@ -124,12 +124,19 @@ async function combineRoot(rootPath, outputAbsolute, config) {
               maxFiles: 10000,
               maxBytes: 64 * 1024 * 1024,
               maxDepth: 128,
+              maxVisitedEntries: 50000,
               signal: controller.signal,
             }
           );
 
+          if (controller.signal.aborted) throw cancellationError();
           const content = files.map((file) => renderBlock(file, config.outputFormat)).join('');
-          await fs.promises.writeFile(outputAbsolute, content, 'utf8');
+          if (controller.signal.aborted) throw cancellationError();
+          await fs.promises.writeFile(outputAbsolute, content, {
+            encoding: 'utf8',
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) throw cancellationError();
 
           const document = await vscode.workspace.openTextDocument(outputAbsolute);
           await vscode.window.showTextDocument(document, { preview: false });
@@ -149,6 +156,12 @@ async function combineRoot(rootPath, outputAbsolute, config) {
     }
     vscode.window.showErrorMessage(`Codebase Combiner failed: ${err.message}`);
   }
+}
+
+function cancellationError() {
+  const error = new Error('Combination cancelled.');
+  error.name = 'AbortError';
+  return error;
 }
 
 function getConfig() {
