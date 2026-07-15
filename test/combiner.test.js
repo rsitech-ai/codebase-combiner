@@ -2,6 +2,7 @@ const { expect } = require('chai');
 const fs = require('fs/promises');
 const path = require('path');
 const os = require('os');
+const { spawnSync } = require('child_process');
 
 const {
   buildMatchers,
@@ -13,6 +14,24 @@ const {
 } = require('../lib/combiner');
 
 describe('combiner helpers', () => {
+  it('bounds adversarial glob matching time', () => {
+    const script = [
+      "const { buildMatchers } = require('./lib/combiner');",
+      "const pattern = `${Array.from({ length: 11 }, () => '**/a').join('/')}/b`;",
+      "const candidate = Array(30).fill('a').join('/');",
+      'if (buildMatchers([pattern])[0].match(candidate)) process.exit(2);',
+    ].join('\n');
+
+    const result = spawnSync(process.execPath, ['-e', script], {
+      cwd: path.join(__dirname, '..'),
+      encoding: 'utf8',
+      timeout: 1000,
+    });
+
+    expect(result.error, result.error?.message).to.equal(undefined);
+    expect(result.status, result.stderr).to.equal(0);
+  });
+
   it('derives allowed extensions from include globs', () => {
     const allowed = deriveAllowedExtensions(['**/*.js', '**/*.swift', '**/*.md']);
     expect(Array.from(allowed).sort()).to.deep.equal(['js', 'md', 'swift']);
