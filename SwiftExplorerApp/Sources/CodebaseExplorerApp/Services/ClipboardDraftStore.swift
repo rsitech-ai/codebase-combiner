@@ -80,13 +80,18 @@ private struct ClipboardDraftFile: @unchecked Sendable {
             throw ClipboardDraftPersistenceError.exceedsRecoverySizeLimit(maximumDraftBytes)
         }
         let data = try Data(contentsOf: draftURL)
+        if let draft = try? PropertyListDecoder().decode(ClipboardDraft.self, from: data) {
+            return draft
+        }
         return try JSONDecoder().decode(ClipboardDraft.self, from: data)
     }
 
     func save(_ draft: ClipboardDraft) throws {
         let directory = draftURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try JSONEncoder().encode(draft)
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let data = try encoder.encode(draft)
         guard data.count <= maximumDraftBytes else {
             throw ClipboardDraftPersistenceError.exceedsRecoverySizeLimit(maximumDraftBytes)
         }
