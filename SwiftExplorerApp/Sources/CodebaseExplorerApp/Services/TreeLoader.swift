@@ -2,11 +2,24 @@ import Foundation
 import UniformTypeIdentifiers
 
 struct WorkspaceScanLimits: Sendable {
-    static let standard = WorkspaceScanLimits(maxFiles: 10000, maxBytes: 64 * 1024 * 1024, maxDepth: 128)
+    static let standard = WorkspaceScanLimits(
+        maxFiles: 10000,
+        maxBytes: 64 * 1024 * 1024,
+        maxDepth: 128,
+        maxVisitedEntries: 50000
+    )
 
     let maxFiles: Int
     let maxBytes: Int
     let maxDepth: Int
+    let maxVisitedEntries: Int
+
+    init(maxFiles: Int, maxBytes: Int, maxDepth: Int, maxVisitedEntries: Int? = nil) {
+        self.maxFiles = maxFiles
+        self.maxBytes = maxBytes
+        self.maxDepth = maxDepth
+        self.maxVisitedEntries = maxVisitedEntries ?? maxFiles * 5
+    }
 }
 
 struct TreeLoader {
@@ -45,6 +58,30 @@ struct TreeLoader {
         var summary = ScanSummary()
         var acceptedFileCount = 0
         var acceptedByteCount = 0
+        var visitedEntryCount = 0
+
+        func boundedChildren(at url: URL) throws -> [URL]? {
+            guard visitedEntryCount < limits.maxVisitedEntries else {
+                throw TreeLoaderError.workspaceTraversalLimit(limits.maxVisitedEntries)
+            }
+            guard let enumerator = FileManager.default.enumerator(
+                at: url,
+                includingPropertiesForKeys: [.isSymbolicLinkKey],
+                options: [.skipsPackageDescendants, .skipsSubdirectoryDescendants],
+                errorHandler: { _, _ in false }
+            ) else { return nil }
+
+            var children: [URL] = []
+            while let child = enumerator.nextObject() as? URL {
+                try Task.checkCancellation()
+                guard visitedEntryCount < limits.maxVisitedEntries else {
+                    throw TreeLoaderError.workspaceTraversalLimit(limits.maxVisitedEntries)
+                }
+                visitedEntryCount += 1
+                children.append(child)
+            }
+            return children.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        }
 
         let rootLinkValues = try standardizedRoot.resourceValues(forKeys: [.isSymbolicLinkKey])
         guard rootLinkValues.isSymbolicLink != true else {
@@ -82,7 +119,7 @@ struct TreeLoader {
             }
 
             if values.isDirectory == true {
-                guard let childrenURLs = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsPackageDescendants]) else {
+                guard let childrenURLs = try boundedChildren(at: url) else {
                     summary.record(.unreadable)
                     return nil
                 }
@@ -94,7 +131,7 @@ struct TreeLoader {
                     relativePath: relativePath(for: url, root: root),
                     url: url,
                     isDirectory: true,
-                    children: children.sorted(by: { $0.name.lowercased() < $1.name.lowercased() }),
+                    children: children,
                     tokenCount: tokenSum,
                     sizeBytes: sizeSum,
                     content: nil
@@ -172,5 +209,16 @@ struct TreeLoader {
     private func isBinary(data: Data) -> Bool {
         let sample = data.prefix(1024)
         return sample.contains(0)
+    }
+}
+
+private enum TreeLoaderError: LocalizedError {
+    case workspaceTraversalLimit(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case let .workspaceTraversalLimit(entries):
+            "Workspace exceeds the traversal safety limit of \(entries) entries."
+        }
     }
 }

@@ -3,6 +3,47 @@ import Foundation
 import XCTest
 
 final class TreeLoaderTests: XCTestCase {
+    func testLoadFailsClosedWhenFilteredTraversalExceedsItsBound() throws {
+        try withTemporaryDirectory { root in
+            try writeFile(at: root.appendingPathComponent("b.swift"), contents: "b")
+            try writeFile(at: root.appendingPathComponent("a.swift"), contents: "a")
+            try writeFile(at: root.appendingPathComponent("c.log"), contents: "c")
+
+            XCTAssertThrowsError(
+                try TreeLoader(
+                    limits: .init(maxFiles: 1, maxBytes: 1024, maxDepth: 8, maxVisitedEntries: 2)
+                ).load(
+                    rootURL: root,
+                    allowList: ["swift"],
+                    excludeList: [],
+                    maxFileSizeKB: 512,
+                    skipHidden: true
+                )
+            ) { error in
+                XCTAssertTrue(error.localizedDescription.contains("traversal safety limit"))
+            }
+        }
+    }
+
+    func testLoadSelectsAcceptedSubsetDeterministically() throws {
+        try withTemporaryDirectory { root in
+            try writeFile(at: root.appendingPathComponent("b.swift"), contents: "b")
+            try writeFile(at: root.appendingPathComponent("a.swift"), contents: "a")
+
+            let result = try TreeLoader(
+                limits: .init(maxFiles: 1, maxBytes: 1024, maxDepth: 8, maxVisitedEntries: 10)
+            ).load(
+                rootURL: root,
+                allowList: ["swift"],
+                excludeList: [],
+                maxFileSizeKB: 512,
+                skipHidden: true
+            )
+
+            XCTAssertEqual(result.root.flattened.filter { !$0.isDirectory }.map(\.relativePath), ["a.swift"])
+        }
+    }
+
     func testLoadStopsAtAggregateFileAndByteLimits() throws {
         try withTemporaryDirectory { root in
             try writeFile(at: root.appendingPathComponent("a.swift"), contents: "1234")

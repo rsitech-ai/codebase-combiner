@@ -89,7 +89,7 @@
         "codebaseCombiner.outputFileName": {
           "type": "string",
           "default": "combined_code.txt",
-          "description": "File name for the combined output placed in the chosen root."
+          "description": "Suggested file name shown in the output save dialog."
         },
         "codebaseCombiner.includeGlobs": {
           "type": "array",
