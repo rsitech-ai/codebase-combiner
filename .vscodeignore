@@ -26,6 +26,7 @@ SECURITY.md
 .editorconfig
 .gitignore
 .eslintrc.cjs
+eslint.config.cjs
 .prettierignore
 .prettierrc
 .swiftformat
