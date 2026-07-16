@@ -1,4 +1,5 @@
 const { expect } = require('chai');
+const { describe, it } = require('node:test');
 const fs = require('fs/promises');
 const path = require('path');
 const os = require('os');
@@ -12,6 +13,8 @@ const {
   isBinaryBuffer,
   renderBlock,
   safeOutputFileName,
+  atomicWriteFile,
+  normalizeMaxFileSizeKB,
 } = require('../lib/combiner');
 
 describe('combiner helpers', () => {
@@ -36,6 +39,20 @@ describe('combiner helpers', () => {
   it('derives allowed extensions from include globs', () => {
     const allowed = deriveAllowedExtensions(['**/*.js', '**/*.swift', '**/*.md']);
     expect(Array.from(allowed).sort()).to.deep.equal(['js', 'md', 'swift']);
+  });
+
+  it('fails open when extension derivation sees complex or extensionless globs', () => {
+    expect(deriveAllowedExtensions(['**/*.{js,ts}'])).to.deep.equal(new Set());
+    expect(deriveAllowedExtensions(['**/*.[jt]s'])).to.deep.equal(new Set());
+    expect(deriveAllowedExtensions(['**/*.@(js|ts)'])).to.deep.equal(new Set());
+    expect(deriveAllowedExtensions(['**/*.js', 'README'])).to.deep.equal(new Set());
+  });
+
+  it('rejects glob inputs that exceed safe compilation bounds', () => {
+    expect(() => buildMatchers(Array(129).fill('**/*.js'))).to.throw(/at most 128/i);
+    expect(() => buildMatchers(['a'.repeat(1025)])).to.throw(/at most 1,024/i);
+    expect(() => buildMatchers(['**/' + '{a,b}'.repeat(9)])).to.throw(/brace expansions/i);
+    expect(() => buildMatchers(['**/{1..1000}.js'])).to.throw(/brace expansions/i);
   });
 
   it('skips excluded extensions, large files, and binaries', async () => {
@@ -193,9 +210,84 @@ describe('combiner helpers', () => {
     expect(result.map((file) => file.relativePath)).to.deep.equal(['a.txt']);
   });
 
+  it('rejects a file swapped to a symlink after directory enumeration', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-file-race-'));
+    const outside = path.join(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-outside-')),
+      'secret.txt'
+    );
+    const target = path.join(root, 'safe.txt');
+    await fs.writeFile(target, 'workspace content');
+    await fs.writeFile(outside, 'outside content');
+
+    const result = await collectFiles(
+      root,
+      buildMatchers(['**/*']),
+      [],
+      buildExtensionSet(['txt']),
+      new Set(),
+      512,
+      path.join(root, 'combined.txt'),
+      {
+        beforeFileOpen: async (candidate) => {
+          if (candidate !== target) return;
+          await fs.unlink(target);
+          await fs.symlink(outside, target);
+        },
+      }
+    );
+
+    expect(result).to.deep.equal([]);
+  });
+
+  it('rejects a parent directory swapped to an escaping symlink before file open', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-parent-race-'));
+    const inside = path.join(root, 'inside');
+    const displaced = path.join(root, 'inside-original');
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-parent-outside-'));
+    const target = path.join(inside, 'item.txt');
+    await fs.mkdir(inside);
+    await fs.writeFile(target, 'workspace content');
+    await fs.writeFile(path.join(outside, 'item.txt'), 'outside content');
+
+    const result = await collectFiles(
+      root,
+      buildMatchers(['**/*']),
+      [],
+      buildExtensionSet(['txt']),
+      new Set(),
+      512,
+      path.join(root, 'combined.txt'),
+      {
+        beforeFileOpen: async (candidate) => {
+          if (candidate !== target) return;
+          await fs.rename(inside, displaced);
+          await fs.symlink(outside, inside);
+        },
+      }
+    );
+
+    expect(result).to.deep.equal([]);
+  });
+
   it('detects binary buffers', () => {
     expect(isBinaryBuffer(Buffer.from('plain text'))).to.equal(false);
     expect(isBinaryBuffer(Buffer.from([0x00, 0x61]))).to.equal(true);
+  });
+
+  it('accepts valid UTF-8 text regardless of non-ASCII character position', () => {
+    const localizedSource = Buffer.from(`${'a'.repeat(100)}Zażółć gęślą jaźń`);
+    expect(isBinaryBuffer(localizedSource)).to.equal(false);
+  });
+
+  it('rejects malformed UTF-8 even when it contains no NUL bytes', () => {
+    expect(isBinaryBuffer(Buffer.from([0xff, 0xfe, 0xfd, 0x61]))).to.equal(true);
+  });
+
+  it('does not reject a valid multibyte character split at the sample boundary', () => {
+    const prefix = Buffer.from('a'.repeat(8191));
+    const suffix = Buffer.from('ż');
+    expect(isBinaryBuffer(Buffer.concat([prefix, suffix]))).to.equal(false);
   });
 
   it('renders markdown blocks with language hints', () => {
@@ -204,11 +296,66 @@ describe('combiner helpers', () => {
     expect(block).to.include('## src/main.swift');
   });
 
+  it('renders markdown safely when content contains fences or paths contain newlines', () => {
+    const block = renderBlock(
+      {
+        relativePath: 'docs/unsafe\n# heading.md',
+        content: 'before\n```js\ninside\n````\nafter',
+      },
+      'md'
+    );
+    expect(block).to.include('`````markdown');
+    expect(block).to.include('\n`````\n');
+    expect(block).not.to.include('unsafe\n# heading');
+  });
+
+  it('preserves an existing destination when an atomic write is aborted', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'combiner-atomic-'));
+    const destination = path.join(root, 'combined.txt');
+    await fs.writeFile(destination, 'original');
+    const controller = new AbortController();
+    const realWriteFile = fs.writeFile;
+
+    let writeCount = 0;
+    const fsPromises = {
+      writeFile: async (...args) => {
+        await realWriteFile(...args);
+        writeCount += 1;
+        controller.abort();
+      },
+      rename: fs.rename,
+      unlink: fs.unlink,
+    };
+
+    let error;
+    try {
+      await atomicWriteFile(destination, 'replacement', {
+        signal: controller.signal,
+        fsPromises,
+        nonce: 'abort-test',
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(writeCount).to.equal(1);
+    expect(error?.name).to.equal('AbortError');
+    expect(await fs.readFile(destination, 'utf8')).to.equal('original');
+    expect((await fs.readdir(root)).sort()).to.deep.equal(['combined.txt']);
+  });
+
   it('constrains configured output names to a file in the chosen root', () => {
     expect(safeOutputFileName('combined_code.txt')).to.equal('combined_code.txt');
     expect(safeOutputFileName('../../outside.txt')).to.equal('outside.txt');
     expect(safeOutputFileName('/tmp/outside.txt')).to.equal('outside.txt');
     expect(safeOutputFileName('')).to.equal('combined_code.txt');
     expect(safeOutputFileName('.')).to.equal('combined_code.txt');
+  });
+
+  it('validates the configured per-file size boundary', () => {
+    expect(normalizeMaxFileSizeKB(512)).to.equal(512);
+    expect(() => normalizeMaxFileSizeKB(0)).to.throw(/between 1 and 8,192/i);
+    expect(() => normalizeMaxFileSizeKB(Number.NaN)).to.throw(/between 1 and 8,192/i);
+    expect(() => normalizeMaxFileSizeKB(8193)).to.throw(/between 1 and 8,192/i);
   });
 });

@@ -13,7 +13,7 @@ This repo contains two deliverables:
   xcode-select --install
   ```
 - Swift 6.0+ (`swift --version` should show a 6.x toolchain).
-- Node.js 18+ and npm (for the VS Code extension).
+- Node.js 20+ and npm (for the VS Code extension packaging toolchain).
 
 ## Install an official macOS release
 
