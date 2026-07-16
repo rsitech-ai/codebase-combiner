@@ -9,6 +9,8 @@ const {
   renderBlock,
   safeOutputFileName,
   stripDot,
+  atomicWriteFile,
+  normalizeMaxFileSizeKB,
 } = require('./lib/combiner');
 
 function activate(context) {
@@ -81,10 +83,21 @@ async function handleCombineFolder(uri) {
 }
 
 async function combineRoot(rootPath, outputAbsolute, config) {
-  const includeMatchers = buildMatchers(config.includeGlobs);
-  const excludeMatchers = buildMatchers(config.excludeGlobs);
-  const includeExtensions = buildExtensionSet(config.includeExtensions);
-  const excludeExtensions = buildExtensionSet(config.excludeExtensions);
+  let includeMatchers;
+  let excludeMatchers;
+  let includeExtensions;
+  let excludeExtensions;
+  let maxFileSizeKB;
+  try {
+    includeMatchers = buildMatchers(config.includeGlobs);
+    excludeMatchers = buildMatchers(config.excludeGlobs);
+    includeExtensions = buildExtensionSet(config.includeExtensions);
+    excludeExtensions = buildExtensionSet(config.excludeExtensions);
+    maxFileSizeKB = normalizeMaxFileSizeKB(config.maxFileSizeKB);
+  } catch (err) {
+    vscode.window.showErrorMessage(`Codebase Combiner: invalid filters: ${err.message}`);
+    return;
+  }
 
   const allowedExtensions = includeExtensions.size
     ? includeExtensions
@@ -118,7 +131,7 @@ async function combineRoot(rootPath, outputAbsolute, config) {
             excludeMatchers,
             allowedExtensions,
             excludeExtensions,
-            config.maxFileSizeKB,
+            maxFileSizeKB,
             outputAbsolute,
             {
               maxFiles: 10000,
@@ -132,11 +145,7 @@ async function combineRoot(rootPath, outputAbsolute, config) {
           if (controller.signal.aborted) throw cancellationError();
           const content = files.map((file) => renderBlock(file, config.outputFormat)).join('');
           if (controller.signal.aborted) throw cancellationError();
-          await fs.promises.writeFile(outputAbsolute, content, {
-            encoding: 'utf8',
-            signal: controller.signal,
-          });
-          if (controller.signal.aborted) throw cancellationError();
+          await atomicWriteFile(outputAbsolute, content, { signal: controller.signal });
 
           const document = await vscode.workspace.openTextDocument(outputAbsolute);
           await vscode.window.showTextDocument(document, { preview: false });
