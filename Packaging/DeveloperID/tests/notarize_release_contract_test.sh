@@ -190,6 +190,8 @@ reset_fixture() {
   printf 'dmg fixture\n' > "$DMG"
   printf '{"bomFormat":"CycloneDX","specVersion":"1.5"}\n' > "$SBOM"
   printf 'symbols fixture\n' > "$SYMBOLS"
+  printf 'stale SBOM that is not named by the manifest\n' > "$TMP_DIR/000-stale.cdx.json"
+  printf 'stale symbols that are not named by the manifest\n' > "$TMP_DIR/000-stale-symbols.zip"
   local app_hash
   local dmg_hash
   local sbom_hash
@@ -271,6 +273,13 @@ test ! -s "$LOG"
 rm -rf "$TMP_DIR/.release-operation.lock"
 
 reset_fixture
+if NOTARYTOOL_STATUS=Accepted run_notary --app-name 'Different App' >/dev/null 2>&1; then
+  echo "A notarization request with an app name that differs from the manifest unexpectedly succeeded." >&2
+  exit 1
+fi
+test ! -s "$LOG"
+
+reset_fixture
 NOTARYTOOL_STATUS='In Progress' WAIT_STATUS=Accepted run_notary
 grep -F 'notarytool submit' "$LOG" >/dev/null
 grep -F -- '--keychain-profile test-notary' "$LOG" >/dev/null
@@ -344,6 +353,7 @@ if SUBMIT_FAIL_WITH_ID=1 run_notary >/dev/null 2>&1; then
 fi
 test -f "$TMP_DIR/notarization/resume-command.txt"
 grep -F -- '--submission-id submission-123' "$TMP_DIR/notarization/resume-command.txt" >/dev/null
+grep -F -- '--app-name Codebase\ Combiner' "$TMP_DIR/notarization/resume-command.txt" >/dev/null
 if grep -F 'stapler staple' "$LOG"; then
   echo "Interrupted submission must not staple the artifact." >&2
   exit 1
