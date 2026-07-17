@@ -45,7 +45,7 @@
 
 - Unit tests: preference validation, adaptive/pane policies, token estimation, command state, async workspace/output ordering, recovery privacy, telemetry shape, tree loading, output formatting, and dependency selection.
 - Integration tests or mocks: temporary-directory loader/draft tests plus injected filesystem, clipboard, save, output-build, and telemetry boundaries.
-- UI/manual smoke: exact-PID `./script/build_and_run.sh --verify` plus the real sandboxed interaction matrix documented in `docs/audit/codebase-combiner-e2e-audit-2026-07-16.md`.
+- UI/manual smoke: exact-PID `./script/build_and_run.sh --verify` plus the real sandboxed interaction matrix documented in `docs/audit/codebase-combiner-full-audit-2026-07-17.md`.
 - Release smoke: `Packaging/AppStore/build_app_store_package.sh --skip-signing`, strict signature/plist/privacy/entitlement/minimum-OS inspection, and bounded 1,500-file Release performance.
 - Commands: `swiftformat --lint .`, `swift test`, `swift build -c release -Xswiftc -warnings-as-errors`, `npm test`, `npm run lint`, `npm run format:check`, `npm run package`, shell contract/syntax checks, package assembly, and exact-PID launch verification.
 
@@ -61,9 +61,9 @@
 - Bundle ID: `com.s1korrrr.codebasecombiner`.
 - Signing team: valid distribution and installer identities were detected locally on 2026-07-14, but the owner team/account path and matching Mac App Store provisioning profile were not verified together.
 - Sandbox/entitlements: strict ad-hoc signature verifies with App Sandbox and user-selected read/write only; no profile is embedded.
-- Privacy manifest: parses; declares UserDefaults reason `CA92.1`, no tracking, and no collected data.
+- Privacy manifest: parses; declares UserDefaults reason `CA92.1` and file-timestamp reasons `3B52.1`/`C617.1`, with no tracking or collected data.
 - Privacy labels: must be entered and owner-confirmed in App Store Connect; they should remain no tracking/no collected data unless the product changes.
-- Assets: the bundle contains a generated `.icns`; current interaction evidence is consolidated in `docs/audit/codebase-combiner-e2e-audit-2026-07-16.md`, but final App Store screenshots at accepted sizes/localizations are not prepared.
+- Assets: the bundle contains a generated `.icns`; current interaction evidence is consolidated in `docs/audit/codebase-combiner-full-audit-2026-07-17.md`, but final App Store screenshots at accepted sizes/localizations are not prepared.
 - Metadata: README/INSTALL are current; App Store Connect name/subtitle/description/keywords, support/privacy URLs, age rating, screenshots, and legal declarations remain owner work.
 - Review notes: app is local-first and needs no demo account.
 - Known blockers: matching provisioning profile, signed installer package, App Store Connect app record, final metadata/screenshots/privacy/legal declarations, upload, and Apple review. Xcode 27 is separately required before adding or proving macOS 27 SDK-only features.
