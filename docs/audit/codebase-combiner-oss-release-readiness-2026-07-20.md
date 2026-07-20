@@ -75,7 +75,7 @@ YAML parsing, plist/privacy-manifest linting performed by the contracts, `git di
 - **BLOCKER — security assurance:** the dedicated security scan requested by the original release brief was not run, by explicit instruction. No statement in this audit should be interpreted as a completed source-security assessment.
 - **PASS — confidential intake:** GitHub private vulnerability reporting remains disabled, but RSI Tech now provides the functioning confidential contact `info@rsitech.ai`; public issue disclosure remains forbidden.
 - **HIGH — branch integrity:** the live repository has neither `main` branch protection nor a ruleset. Required checks and review protections are therefore not enforced by GitHub.
-- **PARTIAL — release credentials:** the live repository has zero release environments, while the local Keychain now contains a valid private-key-backed `Developer ID Application: Rafal Sikora (2NY8A789TN)` identity. Local production signing is available for verification; hosted signing remains unprovisioned.
+- **PARTIAL — release credentials:** the live repository has zero release environments. Locally, a direct Hardened Runtime signing probe succeeded with the private-key-backed `Developer ID Application: Rafal Sikora (2NY8A789TN)` identity and Apple timestamp, and the notarization profile authenticates. Final tagged-artifact signing/notarization remains pending; hosted signing remains unprovisioned.
 - **PASS — privacy claims:** documentation now covers both the sandboxed macOS app and the local VS Code extension, and no longer promises that uninstalling the app deletes saved output or application data.
 - **PASS — dependency audit:** npm vulnerability and signature checks are green. They cover known dependency advisories and registry provenance only.
 
@@ -103,13 +103,13 @@ In the later owner-authorized follow-up, repository ownership moved from `s1korr
 
 ## GO / NO-GO matrix
 
-| Gate                                  | Decision | Required next action                                                                                                                      |
-| ------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Merge repository hardening to `main`  | GO       | Push the verified commit and require hosted CI/CodeQL to pass.                                                                            |
-| Publish source as an official release | NO-GO    | Complete the expanded identity/license/history review and preserve the explicit record that dedicated security scanning was omitted.      |
-| Publish a VSIX                        | NO-GO    | Confirm publisher ownership, provenance, version/tag plan, and hosted checks for the exact commit.                                        |
-| Publish a Developer ID DMG            | NO-GO    | Build locally with the installed Developer ID identity from a signed `macos-v0.1.0` tag, notarize, staple, and verify the exact artifact. |
-| Submit to App Store Connect           | NO-GO    | Provide signing/provisioning/App Store Connect evidence and complete runtime/review validation.                                           |
+| Gate                                  | Decision | Required next action                                                                                                                                               |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Merge repository hardening to `main`  | GO       | Push the verified commit and require hosted CI/CodeQL to pass.                                                                                                     |
+| Publish source as an official release | NO-GO    | Complete identity/license/history review and publish only with the exact signed, notarized, stapled, Gatekeeper-verified artifact and applicable runtime evidence. |
+| Publish a VSIX                        | NO-GO    | Confirm publisher ownership, provenance, version/tag plan, and hosted checks for the exact commit.                                                                 |
+| Publish a Developer ID DMG            | NO-GO    | Build locally with the installed Developer ID identity from a signed `macos-v0.1.0` tag, notarize, staple, and verify the exact artifact.                          |
+| Submit to App Store Connect           | NO-GO    | Provide signing/provisioning/App Store Connect evidence and complete runtime/review validation.                                                                    |
 
 ## Exact next actions
 
