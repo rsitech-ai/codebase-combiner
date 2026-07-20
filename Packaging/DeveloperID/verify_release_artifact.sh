@@ -140,6 +140,7 @@ if [[ "$SIGNING_MODE" == developer-id ]]; then
   [[ "$SOURCE_STATE" == clean ]] || { echo "Developer ID artifact manifest is not source-clean." >&2; exit 6; }
   [[ "$SOURCE_COMMIT" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo "Release manifest source commit does not match HEAD." >&2; exit 6; }
   [[ "$SOURCE_TAG" =~ ^macos-v[0-9]+([.][0-9]+){1,2}$ ]] || { echo "Release manifest has no valid source tag." >&2; exit 6; }
+  [[ "${SOURCE_TAG#macos-v}" == "$MARKETING_VERSION" ]] || { echo "Release manifest source tag does not match its marketing version." >&2; exit 6; }
   [[ "$(git -C "$ROOT_DIR" rev-list -n 1 "$SOURCE_TAG")" == "$SOURCE_COMMIT" ]] || { echo "Release manifest source tag does not resolve to its source commit." >&2; exit 6; }
   [[ "$EFFECTIVE_SIGNING_IDENTITY" == "Developer ID Application:"* ]] || { echo "Release manifest does not name a Developer ID identity." >&2; exit 6; }
   [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo "Release manifest has no valid signing Team ID." >&2; exit 6; }

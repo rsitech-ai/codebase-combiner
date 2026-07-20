@@ -65,7 +65,7 @@ jobs:
       - name: SwiftFormat lint
         run: |
           test "$(swiftformat --version)" = "$SWIFTFORMAT_VERSION"
-          swiftformat --lint . --disable redundantSendable
+          swiftformat --lint .
 
       - name: Swift tests
         run: cd SwiftExplorerApp && swift test

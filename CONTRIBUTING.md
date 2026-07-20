@@ -5,12 +5,13 @@ Thanks for contributing! This project aims to keep changes small, well-tested, a
 ## Getting started
 
 - Read `INSTALL.md` for setup.
+- Use SwiftFormat 0.61.1; other versions are not equivalent to CI.
 - Run tests and lint before submitting:
   - `npm test`
   - `npm run lint`
   - `npm run format:check`
   - `cd SwiftExplorerApp && swift test`
-  - `swiftformat --lint .`
+  - `test "$(swiftformat --version)" = "0.61.1" && swiftformat --lint .`
 
 ## Pull requests
 

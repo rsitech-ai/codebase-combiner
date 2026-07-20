@@ -8,7 +8,7 @@
 - [ ] `npm run lint`
 - [ ] `npm run format:check`
 - [ ] `cd SwiftExplorerApp && swift test`
-- [ ] `swiftformat --lint .`
+- [ ] SwiftFormat 0.61.1: `test "$(swiftformat --version)" = "0.61.1" && swiftformat --lint .`
 
 # Checklist
 
