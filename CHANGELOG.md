@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - Hardened traversal against symbolic-link roots, special-file blocking, recursive-glob denial of service, silent traversal errors, and forged plain-text path headers.
 - Excluded local Git worktrees, app bundles, E2E evidence, agent artifacts, and other non-extension files from VSIX packages.
 
-## [0.1.0] - 2026-07-18
+## [0.1.0] - Release candidate
 
 ### Added
 
@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 - CI workflows for build, test, CodeQL, and gated Developer ID release automation.
 - Open-source documentation (README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY).
 - GitHub issue templates and PR template.
-- README preview image and badges.
+- README status and license badges.
 - Focused macOS preference, workspace, output, dependency, command, and telemetry stores with injectable boundaries and behavioral tests.
 - Structured scan outcomes and skipped-file summaries.
 - Typed scan and persistence retry state with visible recovery controls.

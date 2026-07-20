@@ -15,7 +15,7 @@ This repo ships two deliverables:
 - Combine a workspace or folder into a single Markdown or text file.
 - Flexible include/exclude filters by glob and extension.
 - Token estimation for prompt sizing.
-- Adaptive native macOS workspace with independently collapsible workspace and output panes, including a compact 960×640 path.
+- Adaptive native macOS workspace with independently collapsible workspace and output panes, including a verified 960×640 regular-width path.
 - Structured scan summaries for hidden, excluded, disallowed, oversized, binary, symbolic-link, and unreadable files without exposing skipped paths or symbolic-link targets.
 - A shared 20,000-character current/recovered preview limit with an honest truncation notice; Copy, Copy Last, and Save continue to use the full payload.
 - Privacy-conscious “last ready output” recovery: metadata stays visible, content stays concealed until Reveal, and clearing requires confirmation.
@@ -29,9 +29,9 @@ This repo ships two deliverables:
 
 See `INSTALL.md` for full setup and run instructions.
 
-### Download the macOS app
+### Prepare for the macOS download
 
-Official macOS builds are distributed outside the Mac App Store through [GitHub Releases](https://github.com/s1korrrr/codebase-combiner/releases) as Developer ID-signed, Apple-notarized DMGs. Version 0.1.0, once published, is Apple-silicon-only (`arm64`) and requires macOS 13 or later; Intel and universal builds are not provided.
+No macOS 0.1.0 release is currently published. When an official build is available, it will be distributed outside the Mac App Store through [GitHub Releases](https://github.com/s1korrrr/codebase-combiner/releases) as a Developer ID-signed, Apple-notarized DMG. The candidate is Apple-silicon-only (`arm64`) and declares a macOS 13 deployment target; runtime verification at that floor remains pending. Intel and universal builds are not provided.
 
 Download all assets from the release into one directory and verify them before opening the DMG:
 
@@ -86,14 +86,15 @@ Output options are configurable in VS Code settings under “Codebase Combiner�
 
 ### Swift
 
+- Required formatter: SwiftFormat 0.61.1. Other versions are not equivalent to the CI toolchain.
 - Build: `cd SwiftExplorerApp && swift build`
 - Tests: `cd SwiftExplorerApp && swift test`
 - Run: `cd SwiftExplorerApp && swift run CodebaseExplorerApp`
 - Bundle launch smoke: `./script/build_and_run.sh --verify`
 - Isolated native E2E host: `./script/build_and_run.sh --e2e`
 - Remove isolated E2E state: `./script/build_and_run.sh --clean-e2e-state`
-- Format (SwiftFormat): `cd SwiftExplorerApp && swiftformat .`
-- Format check: `cd SwiftExplorerApp && swiftformat --lint .`
+- Format (SwiftFormat 0.61.1): `test "$(swiftformat --version)" = "0.61.1" && swiftformat .`
+- Format check: `test "$(swiftformat --version)" = "0.61.1" && swiftformat --lint .`
 
 ### Developer ID direct distribution
 

@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug.
-        Please search existing issues before filing a new one.
+        Please search existing issues before filing a new one. Redact source code, local paths, credentials, combined output, and other private data from every field and attachment.
   - type: textarea
     id: summary
     attributes:
@@ -45,7 +45,7 @@ body:
     id: logs
     attributes:
       label: Logs or screenshots
-      description: Paste relevant logs or attach screenshots.
+      description: Paste relevant logs or attach screenshots only after redacting source code, local paths, credentials, combined output, and other private data.
       render: shell
     validations:
       required: false
@@ -54,7 +54,7 @@ body:
     attributes:
       label: Version
       description: App or extension version.
-      placeholder: 0.0.1
+      placeholder: Extension 0.0.2 or macOS 0.1.0 candidate
     validations:
       required: false
   - type: dropdown
@@ -72,6 +72,6 @@ body:
     attributes:
       label: Environment
       description: OS + toolchain versions.
-      placeholder: macOS 14.x, Node 18.x, Swift 6.x
+      placeholder: macOS version, Node 20+ or 24.x, Swift 6.x, Xcode version
     validations:
       required: false

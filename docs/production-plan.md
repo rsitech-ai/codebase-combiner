@@ -6,7 +6,7 @@
 - Primary job: choose a workspace, filter/select files, add optional instructions, copy or save the combined output.
 - Core workflow: pick folder -> scan -> refine selection/filters -> copy or save combined payload -> recover last ready payload later if needed.
 - Business model: free developer tool with optional support link.
-- Supported macOS versions: macOS 13+.
+- Deployment target: macOS 13; runtime verification at that floor remains pending.
 - Offline behavior: fully local; no network is required for scanning, combining, copying, saving, or restoring the last payload.
 - Data handled: user-selected local source files, prompt prefix text, preferences, and the last generated combined payload.
 - Privacy posture: local-first, no tracking, no analytics, no collected data; saved payload is user content stored locally in Application Support.
@@ -35,7 +35,7 @@
 ## Design System
 
 - Native structures: workspace hierarchy, forms, segmented output picker, standard menus/toolbars/buttons, standard Settings, and semantic macOS materials.
-- Adaptive states: 960×640 compact, 1180×760 regular, 1440×900 wide, independent sidebar/inspector visibility, empty, scanning, partial scan, no selection, current output, concealed recovery, and settings.
+- Adaptive states: 864×520 compact minimum, 960×640 and 1180×760 regular, 1440×900 wide, independent sidebar/inspector visibility, empty, scanning, partial scan, no selection, current output, concealed recovery, and settings.
 - Visual style: semantic macOS 13 baseline; one bounded `FunctionalChrome` modifier uses macOS 26 glass only when available and falls back to opaque/regular materials for reduced transparency or increased contrast.
 - Motion rules: repeated workflow actions remain immediate; pane transitions are non-structural and Reduce Motion-safe.
 - Accessibility requirements: named controls, prerequisite help for disabled actions, keyboard/menu parity, safe Cancel focus for destructive recovery clear, and accessibility-hidden collapsed panes.
