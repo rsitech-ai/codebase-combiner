@@ -196,7 +196,7 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "minimatch": "^9.0.9"
+    "minimatch": "^10.2.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
