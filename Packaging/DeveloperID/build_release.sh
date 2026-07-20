@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT_DIR/script/release_path_guard.sh"
 source "$ROOT_DIR/script/disk_image_tools.sh"
+source "$ROOT_DIR/Packaging/DeveloperID/codesign_details.sh"
 PACKAGE_DIR="$ROOT_DIR/SwiftExplorerApp"
 PACKAGING_DIR="$ROOT_DIR/Packaging/DeveloperID"
 OUTPUT_NAME="${DEVELOPER_ID_OUTPUT_NAME:-developer-id}"
@@ -215,7 +216,7 @@ validate_app() {
   if [[ "$SKIP_SIGNING" -eq 0 ]]; then
     grep -F 'Authority=Developer ID Application:' "$signature_output" >/dev/null
     grep -F "TeamIdentifier=$EXPECTED_TEAM_ID" "$signature_output" >/dev/null
-    grep -E '^flags=.*runtime' "$signature_output" >/dev/null
+    codesign_details_has_hardened_runtime "$signature_output"
     grep -F 'Timestamp=' "$signature_output" >/dev/null
   fi
 }
