@@ -99,7 +99,7 @@ Verified on 2026-07-20 for `rsitech-ai/codebase-combiner` after preserving `main
 - No tags and no GitHub Releases.
 - Existing repository description and topics are present and aligned with the product.
 
-In the later owner-authorized follow-up, the repository ownership setting was changed from `s1korrrr` to `rsitech-ai`; other listed GitHub settings were not changed.
+In the later owner-authorized follow-up, the repository ownership and website settings were changed from `s1korrrr` to the canonical `rsitech-ai` repository; other listed GitHub settings were not changed.
 
 ## GO / NO-GO matrix
 
