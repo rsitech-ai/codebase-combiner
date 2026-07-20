@@ -14,7 +14,7 @@ This verdict does not block merging the repository hardening. It blocks represen
 - Surfaces: VS Code extension, macOS SwiftUI app, release scripts/workflows, public documentation, licensing notices, and live GitHub repository settings.
 - Authorized external write: push the completed hardening to `main`.
 - Explicit exclusion: no dedicated security scan was run.
-- Not authorized or not possible in this pass: GitHub settings changes, Apple signing/notarization, release/tag publication, App Store submission, or transfer to another owner/publisher.
+- Not authorized or not possible in the original audit pass: GitHub settings changes, Apple signing/notarization, release/tag publication, App Store submission, or transfer to another owner/publisher. A later owner-authorized follow-up transferred the repository to `rsitech-ai`; that result is recorded in the post-audit addendum below.
 
 ## Repository assessment
 
@@ -88,7 +88,7 @@ YAML parsing, plist/privacy-manifest linting performed by the contracts, `git di
 - **Owner/legal confirmation required:** decide whether the copyright alias in `LICENSE` should remain `s1kor` or use the maintainer's legal/public name. This audit does not make that legal identity choice.
 - **Repository transfer complete:** the GitHub repository is owned by `rsitech-ai`. The VS Code Marketplace publisher remains `s1korrrr` because Marketplace publisher identity is a separate release/account boundary.
 
-## Live GitHub state (read-only verification)
+## Live GitHub state (post-audit transfer addendum)
 
 Verified on 2026-07-20 for `rsitech-ai/codebase-combiner` after preserving `main` at `c999df9e39633c8f18e7ec328e0412b6842a82aa` through the transfer:
 
@@ -99,7 +99,7 @@ Verified on 2026-07-20 for `rsitech-ai/codebase-combiner` after preserving `main
 - No tags and no GitHub Releases.
 - Existing repository description and topics are present and aligned with the product.
 
-The repository ownership setting was changed from `s1korrrr` to `rsitech-ai`; other listed GitHub settings were not changed in this pass.
+In the later owner-authorized follow-up, the repository ownership setting was changed from `s1korrrr` to `rsitech-ai`; other listed GitHub settings were not changed.
 
 ## GO / NO-GO matrix
 
@@ -116,7 +116,7 @@ The repository ownership setting was changed from `s1korrrr` to `rsitech-ai`; ot
 1. Enable GitHub private vulnerability reporting and update the policy link only after the endpoint is functional.
 2. Add a `main` ruleset requiring pull requests and the repository's CI/CodeQL checks; retain an owner recovery path.
 3. Run and triage a dedicated security scan against the exact release commit.
-4. Confirm icon/artwork provenance, license attribution identity, and final GitHub/Marketplace owner strategy.
+4. Confirm icon/artwork provenance, license attribution identity, and the separate VS Code Marketplace publisher strategy. GitHub repository ownership is resolved as `rsitech-ai`.
 5. Validate the macOS app on macOS 13 and record launch, scan, save, recovery, sandbox, and accessibility evidence.
 6. Provision the protected `release` environment and Apple Developer ID/notarization secrets; keep certificate material out of repository logs and artifacts.
 7. Create and sign the release tag only after all blockers close, then verify the produced checksums, SBOM, symbols, signatures, notarization ticket, and hosted workflow provenance before publication.
