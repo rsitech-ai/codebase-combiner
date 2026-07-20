@@ -15,6 +15,7 @@ This creates an ad-hoc signed app and DMG under `dist/developer-id/`. They prove
 Install a `Developer ID Application` identity with its private key, then run:
 
 ```sh
+DEVELOPER_ID_SOURCE_TAG=macos-v0.1.0 \
 Packaging/DeveloperID/build_release.sh \
   --signing-identity "Developer ID Application: Rafal Sikora (2NY8A789TN)"
 ```

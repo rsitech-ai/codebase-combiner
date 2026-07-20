@@ -107,7 +107,9 @@ jobs:
           umask 077
           [[ "$CI_DEVELOPER_ID_CERTIFICATE_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]]
           [[ "$LOCAL_DEVELOPER_ID_CERTIFICATE_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]]
-          test "${CI_DEVELOPER_ID_CERTIFICATE_SHA256^^}" != "${LOCAL_DEVELOPER_ID_CERTIFICATE_SHA256^^}"
+          ci_fingerprint="$(printf '%s' "$CI_DEVELOPER_ID_CERTIFICATE_SHA256" | tr '[:lower:]' '[:upper:]')"
+          local_fingerprint="$(printf '%s' "$LOCAL_DEVELOPER_ID_CERTIFICATE_SHA256" | tr '[:lower:]' '[:upper:]')"
+          test "$ci_fingerprint" != "$local_fingerprint"
           keychain_secret="$(openssl rand -hex 32)"
           certificate="$RUNNER_TEMP/developer-id.p12"
           public_certificate="$RUNNER_TEMP/developer-id.pem"
@@ -123,8 +125,8 @@ jobs:
           security find-identity -p codesigning -v "$RELEASE_KEYCHAIN" | grep -F "$SIGNING_IDENTITY"
           security find-certificate -c "$SIGNING_IDENTITY" -p "$RELEASE_KEYCHAIN" > "$public_certificate"
           actual_fingerprint="$(openssl x509 -in "$public_certificate" -noout -fingerprint -sha256 | sed 's/^sha256 Fingerprint=//; s/^SHA256 Fingerprint=//; s/://g' | tr '[:lower:]' '[:upper:]')"
-          test "$actual_fingerprint" = "${CI_DEVELOPER_ID_CERTIFICATE_SHA256^^}"
-          test "$actual_fingerprint" != "${LOCAL_DEVELOPER_ID_CERTIFICATE_SHA256^^}"
+          test "$actual_fingerprint" = "$ci_fingerprint"
+          test "$actual_fingerprint" != "$local_fingerprint"
           rm -f "$public_certificate"
 
       - name: Store notary credentials in the ephemeral Keychain
