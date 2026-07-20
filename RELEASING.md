@@ -45,6 +45,7 @@ The checked v0.1.0 artifact is Apple silicon (`arm64`) only. Do not claim Intel 
 The release machine must contain the private-key-backed `Developer ID Application` identity. This Mac uses the existing identity directly through its login Keychain. Its private key is never exported, copied, repackaged as PKCS#12, imported into a temporary Keychain, copied into release notes, or exposed to pull-request jobs.
 
 ```sh
+DEVELOPER_ID_SOURCE_TAG=macos-v0.1.0 \
 Packaging/DeveloperID/build_release.sh \
   --version 0.1.0 \
   --signing-identity "Developer ID Application: Rafal Sikora (2NY8A789TN)"

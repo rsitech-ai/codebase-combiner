@@ -16,8 +16,18 @@ for file in "${required_files[@]}"; do
   [[ -f "$file" ]] || { echo "Missing open-source release file: $file" >&2; exit 1; }
 done
 
-grep -F 'security/advisories/new' SECURITY.md >/dev/null
-if grep -Ei 'open (a )?(public )?(GitHub )?issue|public issue|issue titled' SECURITY.md CODE_OF_CONDUCT.md; then
+grep -F 'GitHub private vulnerability reporting is not currently enabled' SECURITY.md >/dev/null
+grep -F 'A functioning private intake is not currently available' docs/support.md >/dev/null
+grep -F '/security/policy' .github/ISSUE_TEMPLATE/config.yml >/dev/null
+if grep -F 'security/advisories/new' SECURITY.md docs/support.md .github/ISSUE_TEMPLATE/config.yml; then
+  echo "Security guidance must not advertise a disabled private-reporting endpoint." >&2
+  exit 1
+fi
+if grep -F 'private-reporting instructions' docs/support.md; then
+  echo "Support guidance must not claim that unavailable private-reporting instructions exist." >&2
+  exit 1
+fi
+if grep -Ei 'open (a )?(public )?(GitHub )?issue|issue titled' SECURITY.md CODE_OF_CONDUCT.md; then
   echo "Sensitive reports must not use a public issue fallback." >&2
   exit 1
 fi
@@ -40,6 +50,13 @@ grep -F 'timeout-minutes:' .github/workflows/ci.yml >/dev/null
 grep -F 'concurrency:' .github/workflows/ci.yml >/dev/null
 grep -F 'npm audit signatures' .github/workflows/ci.yml >/dev/null
 grep -F 'Packaging/DeveloperID/tests/run_tests.sh' .github/workflows/ci.yml >/dev/null
+grep -F -- '--disable redundantSendable' .swiftformat >/dev/null
+for swiftformat_doc in README.md INSTALL.md CONTRIBUTING.md; do
+  grep -F 'SwiftFormat 0.61.1' "$swiftformat_doc" >/dev/null || {
+    echo "SwiftFormat version is not pinned in $swiftformat_doc" >&2
+    exit 1
+  }
+done
 
 for privacy_manifest in Packaging/AppStore/PrivacyInfo.xcprivacy Packaging/DeveloperID/PrivacyInfo.xcprivacy; do
   plutil -lint "$privacy_manifest" >/dev/null
@@ -97,6 +114,18 @@ grep -F 'dist/developer-id/SHA256SUMS' .github/workflows/release.yml >/dev/null
 grep -F 'dist/developer-id/notarization-submission.json' .github/workflows/release.yml >/dev/null
 grep -F 'release-assets/notarization-submission.json' .github/workflows/release.yml >/dev/null
 grep -F 'DEVELOPER_ID_SOURCE_TAG' .github/workflows/release.yml >/dev/null
+if grep -E '\$\{[^}]+\^\^\}' .github/workflows/release.yml; then
+  echo "The macOS release workflow uses Bash-4-only uppercase expansion." >&2
+  exit 1
+fi
+grep -F '[[ "${SOURCE_TAG#macos-v}" == "$MARKETING_VERSION" ]]' Packaging/DeveloperID/build_release.sh >/dev/null
+grep -F '[[ "${SOURCE_TAG#macos-v}" == "$MARKETING_VERSION" ]]' Packaging/DeveloperID/verify_release_artifact.sh >/dev/null
+for release_doc in Packaging/DeveloperID/README.md RELEASING.md; do
+  grep -F 'DEVELOPER_ID_SOURCE_TAG=macos-v0.1.0' "$release_doc" >/dev/null || {
+    echo "Production release command is missing its source tag in $release_doc" >&2
+    exit 1
+  }
+done
 if grep -F 'pull_request:' .github/workflows/release.yml; then
   echo "Release signing must never run on pull requests." >&2
   exit 1
@@ -114,5 +143,35 @@ grep -F 'node_modules/**/.github/**' .vscodeignore >/dev/null
 grep -F 'node_modules/**/*.map' .vscodeignore >/dev/null
 grep -F 'node_modules/**/*.d.ts' .vscodeignore >/dev/null
 grep -F '.worktrees/**' .vscodeignore >/dev/null
+
+expected_vsix="$ROOT_DIR/codebase-combiner-$(node -p 'require("./package.json").version').vsix"
+test -f "$expected_vsix"
+stale_seed="$(mktemp "$ROOT_DIR/.vsix-inventory-contract.XXXXXX")"
+stale_candidate="${stale_seed}.vsix"
+if [[ -e "$stale_candidate" ]]; then
+  rm -f "$stale_seed"
+  echo "Unable to allocate a collision-safe stale VSIX fixture." >&2
+  exit 1
+fi
+stale_vsix="$stale_candidate"
+cleanup_stale_vsix() {
+  rm -f "$stale_seed" "$stale_vsix"
+}
+trap cleanup_stale_vsix EXIT
+mv "$stale_seed" "$stale_vsix"
+cp "$expected_vsix" "$stale_vsix"
+if script/tests/vsix_inventory_test.sh >/dev/null 2>&1; then
+  echo "VSIX inventory accepted an ambiguous stale root artifact." >&2
+  exit 1
+fi
+cleanup_stale_vsix
+trap - EXIT
+
+test "$(sips -g format assets/icon.png | awk '/format:/ {print $2}')" = png
+grep -F 'No macOS 0.1.0 release is currently published.' README.md >/dev/null
+grep -F 'runtime support at the macOS 13 floor remains unverified' docs/release/0.1.0/RELEASE_NOTES.md >/dev/null
+grep -F '## [0.1.0] - Release candidate' CHANGELOG.md >/dev/null
+grep -F 'Effective date: July 20, 2026' docs/privacy-policy.md >/dev/null
+grep -F 'Removing the app does not guarantee that macOS removes this local data.' docs/privacy-policy.md >/dev/null
 
 echo "Open-source release repository contract passed"

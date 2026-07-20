@@ -3,6 +3,33 @@ import Foundation
 import SecureFileAccessC
 import UniformTypeIdentifiers
 
+typealias DirectoryChildEnumeration = (_ directory: URL, _ visit: (URL) throws -> Void) throws -> Void
+
+func enumerateImmediateDirectoryChildren(
+    at directory: URL,
+    visit: (URL) throws -> Void
+) throws {
+    var enumerationError: Error?
+    guard let enumerator = FileManager.default.enumerator(
+        at: directory,
+        includingPropertiesForKeys: [.isSymbolicLinkKey],
+        options: [.skipsPackageDescendants, .skipsSubdirectoryDescendants],
+        errorHandler: { _, error in
+            enumerationError = error
+            return false
+        }
+    ) else {
+        throw CocoaError(.fileReadUnknown)
+    }
+
+    while let child = enumerator.nextObject() as? URL {
+        try visit(child)
+    }
+    if let enumerationError {
+        throw enumerationError
+    }
+}
+
 struct WorkspaceScanLimits: Sendable {
     static let standard = WorkspaceScanLimits(
         maxFiles: 10000,
@@ -28,13 +55,16 @@ struct TreeLoader {
     private let estimator = TokenEstimator()
     private let limits: WorkspaceScanLimits
     private let beforeFileOpen: ((URL) -> Void)?
+    private let enumerateChildren: DirectoryChildEnumeration
 
     init(
         limits: WorkspaceScanLimits = .standard,
-        beforeFileOpen: ((URL) -> Void)? = nil
+        beforeFileOpen: ((URL) -> Void)? = nil,
+        enumerateChildren: @escaping DirectoryChildEnumeration = enumerateImmediateDirectoryChildren
     ) {
         self.limits = limits
         self.beforeFileOpen = beforeFileOpen
+        self.enumerateChildren = enumerateChildren
     }
 
     func loadTree(
@@ -72,18 +102,14 @@ struct TreeLoader {
             guard visitedEntryCount < limits.maxVisitedEntries else {
                 throw TreeLoaderError.workspaceTraversalLimit(limits.maxVisitedEntries)
             }
-            let children = try FileManager.default.contentsOfDirectory(
-                at: url,
-                includingPropertiesForKeys: [.isSymbolicLinkKey],
-                options: [.skipsPackageDescendants]
-            )
-
-            for _ in children {
+            var children: [URL] = []
+            try enumerateChildren(url) { child in
                 try Task.checkCancellation()
                 guard visitedEntryCount < limits.maxVisitedEntries else {
                     throw TreeLoaderError.workspaceTraversalLimit(limits.maxVisitedEntries)
                 }
                 visitedEntryCount += 1
+                children.append(child)
             }
             return children.sorted { lexicalPathPrecedes($0.lastPathComponent, $1.lastPathComponent) }
         }

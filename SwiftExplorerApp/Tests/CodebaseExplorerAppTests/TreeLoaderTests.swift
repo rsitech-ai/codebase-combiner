@@ -4,6 +4,34 @@ import Foundation
 import XCTest
 
 final class TreeLoaderTests: XCTestCase {
+    func testTraversalLimitStopsStreamingDirectoryEnumerationImmediately() throws {
+        try withTemporaryDirectory { root in
+            var yieldedEntryCount = 0
+            let loader = TreeLoader(
+                limits: .init(maxFiles: 1, maxBytes: 1024, maxDepth: 8, maxVisitedEntries: 2),
+                enumerateChildren: { directory, visit in
+                    for name in ["one.swift", "two.swift", "three.swift", "four.swift"] {
+                        yieldedEntryCount += 1
+                        try visit(directory.appendingPathComponent(name))
+                    }
+                }
+            )
+
+            XCTAssertThrowsError(
+                try loader.load(
+                    rootURL: root,
+                    allowList: ["swift"],
+                    excludeList: [],
+                    maxFileSizeKB: 512,
+                    skipHidden: true
+                )
+            ) { error in
+                XCTAssertTrue(error.localizedDescription.contains("traversal safety limit"))
+            }
+            XCTAssertEqual(yieldedEntryCount, 3)
+        }
+    }
+
     func testLoadFailsClosedWhenFilteredTraversalExceedsItsBound() throws {
         try withTemporaryDirectory { root in
             try writeFile(at: root.appendingPathComponent("b.swift"), contents: "b")

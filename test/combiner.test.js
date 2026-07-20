@@ -13,6 +13,7 @@ const {
   isBinaryBuffer,
   renderBlock,
   safeOutputFileName,
+  suggestedOutputFileName,
   atomicWriteFile,
   normalizeMaxFileSizeKB,
   parseRunFilterInput,
@@ -456,6 +457,13 @@ describe('combiner helpers', () => {
     expect(safeOutputFileName('/tmp/outside.txt')).to.equal('outside.txt');
     expect(safeOutputFileName('')).to.equal('combined_code.txt');
     expect(safeOutputFileName('.')).to.equal('combined_code.txt');
+  });
+
+  it('uses the selected format for the untouched default output name', () => {
+    expect(suggestedOutputFileName('combined_code.txt', 'md')).to.equal('combined_code.md');
+    expect(suggestedOutputFileName('combined_code.txt', 'txt')).to.equal('combined_code.txt');
+    expect(suggestedOutputFileName('review-output.txt', 'md')).to.equal('review-output.txt');
+    expect(suggestedOutputFileName('../../outside.md', 'md')).to.equal('outside.md');
   });
 
   it('validates the configured per-file size boundary', () => {

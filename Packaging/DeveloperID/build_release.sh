@@ -18,7 +18,7 @@ MINIMUM_SYSTEM_VERSION="${DEVELOPER_ID_MINIMUM_SYSTEM_VERSION:-13.0}"
 ARCHITECTURE="${DEVELOPER_ID_ARCHITECTURE:-arm64}"
 COPYRIGHT_YEAR="${DEVELOPER_ID_COPYRIGHT_YEAR:-2026}"
 SIGNING_IDENTITY="${DEVELOPER_ID_SIGNING_IDENTITY:-}"
-SOURCE_TAG="${DEVELOPER_ID_SOURCE_TAG:-${GITHUB_REF_NAME:-}}"
+SOURCE_TAG="${DEVELOPER_ID_SOURCE_TAG:-}"
 SKIP_SIGNING=0
 
 usage() {
@@ -97,6 +97,10 @@ invalid_metadata() {
 [[ "$ARCHITECTURE" == arm64 || "$ARCHITECTURE" == x86_64 ]] || invalid_metadata "architecture"
 [[ "$COPYRIGHT_YEAR" =~ ^[0-9]{4}$ ]] || invalid_metadata "copyright year"
 [[ "$OUTPUT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || invalid_metadata "output name"
+if [[ -n "$SOURCE_TAG" ]]; then
+  [[ "$SOURCE_TAG" =~ ^macos-v[0-9]+([.][0-9]+){1,2}$ ]] || invalid_metadata "source tag"
+  [[ "${SOURCE_TAG#macos-v}" == "$MARKETING_VERSION" ]] || { echo "Release source tag does not match the marketing version." >&2; exit 2; }
+fi
 
 if [[ -n "$SIGNING_IDENTITY" && "$SIGNING_IDENTITY" != "Developer ID Application:"* ]]; then
   echo "Signing identity must be a Developer ID Application identity." >&2

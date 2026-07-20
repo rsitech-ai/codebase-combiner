@@ -7,7 +7,7 @@ const {
   buildExtensionSet,
   collectFiles,
   renderBlock,
-  safeOutputFileName,
+  suggestedOutputFileName,
   atomicWriteFile,
   normalizeMaxFileSizeKB,
   parseRunFilterInput,
@@ -41,7 +41,10 @@ async function handleCombineWorkspace() {
     return;
   }
 
-  const outputPath = await promptForOutputPath(folder.uri.fsPath, config.outputFileName);
+  const outputPath = await promptForOutputPath(
+    folder.uri.fsPath,
+    suggestedOutputFileName(config.outputFileName, config.outputFormat)
+  );
   if (!outputPath) {
     return;
   }
@@ -77,7 +80,10 @@ async function handleCombineFolder(uri) {
     return;
   }
 
-  const outputPath = await promptForOutputPath(targetPath, config.outputFileName);
+  const outputPath = await promptForOutputPath(
+    targetPath,
+    suggestedOutputFileName(config.outputFileName, config.outputFormat)
+  );
   if (!outputPath) {
     return;
   }
@@ -230,7 +236,7 @@ async function pickWorkspaceFolder() {
 
 async function promptForOutputPath(rootPath, defaultName) {
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file(path.join(rootPath, safeOutputFileName(defaultName))),
+    defaultUri: vscode.Uri.file(path.join(rootPath, defaultName)),
     filters: {
       'Text and Markdown': ['txt', 'md'],
       'All Files': ['*'],
