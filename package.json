@@ -9,12 +9,12 @@
   "icon": "assets/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/s1korrrr/codebase-combiner.git"
+    "url": "https://github.com/rsitech-ai/codebase-combiner.git"
   },
   "bugs": {
-    "url": "https://github.com/s1korrrr/codebase-combiner/issues"
+    "url": "https://github.com/rsitech-ai/codebase-combiner/issues"
   },
-  "homepage": "https://github.com/s1korrrr/codebase-combiner#readme",
+  "homepage": "https://github.com/rsitech-ai/codebase-combiner#readme",
   "keywords": [
     "codebase",
     "combiner",

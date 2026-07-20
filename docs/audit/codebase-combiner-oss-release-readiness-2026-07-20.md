@@ -86,11 +86,11 @@ YAML parsing, plist/privacy-manifest linting performed by the contracts, `git di
 - Shipped Node runtime dependencies are represented in `THIRD_PARTY_NOTICES.md` and the package lock.
 - **Owner confirmation required:** retain evidence that the icon and all public artwork are original or licensed for redistribution.
 - **Owner/legal confirmation required:** decide whether the copyright alias in `LICENSE` should remain `s1kor` or use the maintainer's legal/public name. This audit does not make that legal identity choice.
-- **Owner decision required:** the current GitHub owner and VS Code publisher remain `s1korrrr`. A transfer to `rsitech-ai` is a separate coordinated release decision.
+- **Repository transfer complete:** the GitHub repository is owned by `rsitech-ai`. The VS Code Marketplace publisher remains `s1korrrr` because Marketplace publisher identity is a separate release/account boundary.
 
 ## Live GitHub state (read-only verification)
 
-Verified on 2026-07-20 for `s1korrrr/codebase-combiner`:
+Verified on 2026-07-20 for `rsitech-ai/codebase-combiner` after preserving `main` at `c999df9e39633c8f18e7ec328e0412b6842a82aa` through the transfer:
 
 - Public repository; default branch `main`; Issues enabled.
 - No branch protection and no repository rulesets.
@@ -99,7 +99,7 @@ Verified on 2026-07-20 for `s1korrrr/codebase-combiner`:
 - No tags and no GitHub Releases.
 - Existing repository description and topics are present and aligned with the product.
 
-No GitHub settings were changed in this pass.
+The repository ownership setting was changed from `s1korrrr` to `rsitech-ai`; other listed GitHub settings were not changed in this pass.
 
 ## GO / NO-GO matrix
 
