@@ -7,7 +7,7 @@ This repo contains two deliverables:
 
 ## Prerequisites
 
-- macOS 13 or newer.
+- The candidate declares a macOS 13 deployment target. Runtime verification at that floor remains pending.
 - Xcode Command Line Tools (for `swift`); install with:
   ```sh
   xcode-select --install
@@ -113,16 +113,17 @@ swift test
 
 ## Swift formatting (SwiftFormat)
 
-Install SwiftFormat (macOS):
+This repository and CI require SwiftFormat 0.61.1. Install that exact release using the same verified archive shown in `.github/workflows/ci.yml`; an unpinned Homebrew install is not equivalent.
 
 ```sh
-brew install swiftformat
+test "$(swiftformat --version)" = "0.61.1"
 ```
 
-Then run:
+Then format or lint from the repository root:
 
 ```sh
 swiftformat .
+swiftformat --lint .
 ```
 
 ## Create a local direct-distribution bundle

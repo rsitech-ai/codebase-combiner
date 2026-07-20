@@ -10,7 +10,7 @@ Reviewer flow:
 2. Choose a folder containing text/source files.
 3. Confirm the selected files in the sidebar and adjust filters if desired.
 4. Build the combined output, then copy or save it through the system save panel.
-5. Relaunch to inspect the locally stored recovery draft; use Clear Recovered Output to delete it.
+5. Relaunch to inspect the locally stored recovery draft; use Clear Saved Output to delete it.
 
 The app is sandboxed and requests only user-selected read/write file access. All processing and recovery storage are local. Support and privacy pages are available in the Help menu and Settings.
 

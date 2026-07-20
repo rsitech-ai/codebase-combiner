@@ -107,13 +107,19 @@ if DEVELOPER_ID_MINIMUM_SYSTEM_VERSION=12.0 run_build --skip-signing >/dev/null 
 fi
 grep -F 'preserve' "$sentinel" >/dev/null
 
+if DEVELOPER_ID_SOURCE_TAG=macos-v9.9.9 run_build --skip-signing >/dev/null 2>&1; then
+  echo "Source tag that disagrees with the marketing version unexpectedly succeeded." >&2
+  exit 1
+fi
+grep -F 'preserve' "$sentinel" >/dev/null
+
 mkdir -p "$DIST_DIR/notarization"
 printf 'stale\n' > "$DIST_DIR/notarization/summary.json"
 printf 'stale\n' > "$DIST_DIR/SHA256SUMS"
 printf 'stale\n' > "$DIST_DIR/notarization-summary.json"
 printf 'stale\n' > "$DIST_DIR/notarization-submission.json"
 printf 'stale\n' > "$DIST_DIR/notarization-log.json"
-run_build --skip-signing
+GITHUB_REF_NAME=main run_build --skip-signing
 
 test -d "$APP"
 test -f "$DMG"
@@ -151,6 +157,7 @@ test "$binary_uuid" = "$dsym_uuid"
 grep -F '"bomFormat": "CycloneDX"' "$DIST_DIR/Codebase-Combiner-0.1.0-arm64.cdx.json" >/dev/null
 grep -F '"name": "Codebase Combiner"' "$DIST_DIR/Codebase-Combiner-0.1.0-arm64.cdx.json" >/dev/null
 grep -F '"signingMode": "ad-hoc local validation"' "$DIST_DIR/release-manifest.json" >/dev/null
+grep -F '"sourceTag": null' "$DIST_DIR/release-manifest.json" >/dev/null
 grep -E '"sourceState": "(clean|dirty)"' "$DIST_DIR/release-manifest.json" >/dev/null
 grep -F '"appExecutableSHA256":' "$DIST_DIR/release-manifest.json" >/dev/null
 grep -F '"dmgSHA256":' "$DIST_DIR/release-manifest.json" >/dev/null
