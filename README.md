@@ -33,7 +33,7 @@ See `INSTALL.md` for full setup and run instructions.
 
 ### Prepare for the macOS download
 
-No macOS 0.1.0 release is currently published. When an official build is available, it will be distributed outside the Mac App Store through [GitHub Releases](https://github.com/rsitech-ai/codebase-combiner/releases) as a Developer ID-signed, Apple-notarized DMG. The candidate is Apple-silicon-only (`arm64`) and declares a macOS 13 deployment target; runtime verification at that floor remains pending. Intel and universal builds are not provided.
+macOS 0.1.0 is published outside the Mac App Store through [GitHub Releases](https://github.com/rsitech-ai/codebase-combiner/releases/tag/macos-v0.1.0) as a Developer ID-signed, Apple-notarized DMG. The build is Apple-silicon-only (`arm64`) and declares a macOS 13 deployment target; runtime verification at that floor remains pending. Intel and universal builds are not provided.
 
 Download all assets from the release into one directory and verify them before opening the DMG:
 

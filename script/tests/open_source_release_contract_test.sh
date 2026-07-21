@@ -187,9 +187,10 @@ cleanup_stale_vsix
 trap - EXIT
 
 test "$(sips -g format assets/icon.png | awk '/format:/ {print $2}')" = png
-grep -F 'No macOS 0.1.0 release is currently published.' README.md >/dev/null
+grep -F 'macOS 0.1.0 is published' README.md >/dev/null
+grep -F 'releases/tag/macos-v0.1.0' README.md >/dev/null
 grep -F 'runtime support at the macOS 13 floor remains unverified' docs/release/0.1.0/RELEASE_NOTES.md >/dev/null
-grep -F '## [0.1.0] - Release candidate' CHANGELOG.md >/dev/null
+grep -F '## [0.1.0] - 2026-07-21' CHANGELOG.md >/dev/null
 grep -F 'Effective date: July 20, 2026' docs/privacy-policy.md >/dev/null
 grep -F 'Removing the app does not guarantee that macOS removes this local data.' docs/privacy-policy.md >/dev/null
 
