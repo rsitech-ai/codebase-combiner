@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - Hardened traversal against symbolic-link roots, special-file blocking, recursive-glob denial of service, silent traversal errors, and forged plain-text path headers.
 - Excluded local Git worktrees, app bundles, E2E evidence, agent artifacts, and other non-extension files from VSIX packages.
 
-## [0.1.0] - Release candidate
+## [0.1.0] - 2026-07-21
 
 ### Added
 
